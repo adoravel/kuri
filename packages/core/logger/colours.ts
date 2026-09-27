@@ -70,18 +70,3 @@ export const backgrounds = {
 export const RESET = "\x1b[0m";
 export const BOLD = "\x1b[1m";
 export const DIM = "\x1b[2m";
-
-export function boldText(s: string): string {
-	return `${BOLD}${s}${RESET}`;
-}
-export function dimText(s: string): string {
-	return `${DIM}${s}${RESET}`;
-}
-
-export function colourText(s: string, colour: string): string {
-	return `${colour}${s}${RESET}`;
-}
-
-export function bgText(s: string, bg: string): string {
-	return `${bg}${s}${RESET}`;
-}

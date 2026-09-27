@@ -8,6 +8,7 @@ export async function mapWithConcurrency<T, R>(
 	items: readonly T[],
 	limit: number,
 	fn: (item: T, index: number) => Promise<R>,
+	signal?: AbortSignal,
 ): Promise<PromiseSettledResult<R>[]> {
 	if (limit < 1) throw new RangeError("limit must be at least one");
 	if (items.length === 0) return [];
@@ -18,6 +19,15 @@ export async function mapWithConcurrency<T, R>(
 	async function worker() {
 		while (cursor < items.length) {
 			const index = cursor++;
+
+			if (signal?.aborted) {
+				results[index] = {
+					status: "rejected",
+					reason: signal.reason ?? new DOMException("Aborted", "AbortError"),
+				};
+				continue;
+			}
+
 			try {
 				const value = await fn(items[index], index);
 				results[index] = { status: "fulfilled", value };

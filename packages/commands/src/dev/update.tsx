@@ -8,6 +8,7 @@ import { defineCommand } from "@kuristina/commands/core";
 import { ownerOnly } from "@kuristina/commands/core";
 import { requestRestart } from "@kuristina/discord-bot/restart";
 import { git } from "@kuristina/core/ops/git";
+import { spawn } from "@kuristina/core";
 
 export default defineCommand({
 	aliases: ["update", "pull"],
@@ -16,7 +17,7 @@ export default defineCommand({
 	middleware: [ownerOnly],
 	async exec(ctx) {
 		const fetched = await git.fetch();
-		if (!fetched.ok) {
+		if (!fetched.success) {
 			return void await ctx.error(`\`git fetch\` failed:\n\`\`\`\n${fetched.stderr}\n\`\`\``);
 		}
 
@@ -40,7 +41,7 @@ export default defineCommand({
 
 		const changedFiles = await git.pendingChangedFiles();
 		const pulled = await git.pullFastForward();
-		if (!pulled.ok) {
+		if (!pulled.success) {
 			return void await ctx.error(
 				`\`git pull --ff-only\` failed (likely diverged history):\n\`\`\`\n${pulled.stderr}\n\`\`\``,
 			);
@@ -48,17 +49,11 @@ export default defineCommand({
 
 		if (changedFiles.some((f) => f === "deno.json" || f === "deno.lock")) {
 			await ctx.reply({ content: "dependencies changed, re-caching before restart..." });
-			const cache = new Deno.Command(Deno.execPath(), {
-				args: ["install"],
-				stdout: "piped",
-				stderr: "piped",
-			});
-			const { code, stderr } = await cache.output();
-			if (code !== 0) {
+			const cached = await spawn(Deno.execPath(), { args: ["install"], timeoutMs: 120_000 });
+			if (!cached.success) {
 				return void await ctx.error(
-					`\`deno install\` failed after pull, code is updated but deps aren't cached:\n\`\`\`\n${
-						new TextDecoder().decode(stderr)
-					}\n\`\`\``,
+					`\`deno install\` failed after pull, code is updated but deps aren't cached:\n` +
+						`\`\`\`\n${cached.stderr}\n\`\`\``,
 				);
 			}
 		}

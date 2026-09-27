@@ -1,1 +1,4 @@
-{}
+{
+	"name": "@kuristina/app-bot",
+	"exports": "./main.ts"
+}

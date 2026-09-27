@@ -13,7 +13,7 @@ import {
 	findMatchingRows,
 	MAX_PLAN_ROWS,
 	parseKeyValuePairs,
-	validateAndGetSchema,
+	tableMetadata,
 } from "@kuristina/database/admin";
 import { confirmAndApply, evaluateValue, reportCommandError } from "./shared.tsx";
 
@@ -33,6 +33,7 @@ export default defineCommand({
 		}),
 	},
 	async exec(ctx) {
+		const db = ctx.services.db;
 		try {
 			assertEditableTable(ctx.args.table);
 
@@ -43,7 +44,7 @@ export default defineCommand({
 				return void await ctx.error("give me a filter like `discord_id=..,provider=..`");
 			}
 
-			const rows = await findMatchingRows(ctx.args.table, filter.value, MAX_PLAN_ROWS + 1);
+			const rows = await findMatchingRows(db, ctx.args.table, filter.value, MAX_PLAN_ROWS + 1);
 			if (!rows.length) {
 				return void await ctx.error(
 					`no rows in \`${ctx.args.table}\` match ${JSON.stringify(filter.value)}`,
@@ -62,7 +63,7 @@ export default defineCommand({
 				return void await ctx.error("give me at least one column=value change");
 			}
 
-			const schema = await validateAndGetSchema(ctx.args.table);
+			const schema = await tableMetadata(db, ctx.args.table);
 			const coerced: Record<string, unknown> = {};
 			for (const [col, raw] of Object.entries(rawChanges.value)) {
 				const columnInfo = schema.columns.find((c) => c.name === col);
@@ -72,7 +73,7 @@ export default defineCommand({
 				coerced[col] = coerceValue(evaluateValue(raw), columnInfo);
 			}
 
-			const changes = await buildSetChanges(ctx.args.table, rows, coerced);
+			const changes = await buildSetChanges(db, ctx.args.table, rows, coerced as never);
 			const plan = createPlan(
 				`set ${ctx.args.table} where ${ctx.args.where}: ${ctx.args.changes} (${rows.length} row${
 					rows.length === 1 ? "" : "s"

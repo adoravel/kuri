@@ -5,15 +5,9 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import {
-	getHighestQualityImage,
-	getRecentTracks,
-	type LastFmTrack,
-} from "@kuristina/services/music/last.fm";
-import { repositories } from "@kuristina/database";
+import { getHighestQualityImage, type LastFmTrack } from "@kuristina/services/music/last.fm";
 import { NoAccountMessage } from "./login.tsx";
 import { md } from "@kuristina/discord-ui";
-import { resolveSongLinkByQuery } from "@kuristina/services/music/links";
 import { renderPlatformLinks } from "@kuristina/embeds/musiclinks";
 
 function NoScrobbles() {
@@ -114,10 +108,13 @@ export default defineCommand({
 	async exec(ctx) {
 		const userId = ctx.args.user ?? ctx.user.id;
 
-		const account = await repositories.scrobble.getDefault(userId);
+		const account = await ctx.services.repos.scrobble.getDefault(userId);
 		if (!account.ok || !account.value) return void await ctx.reply({ ...<NoAccountMessage /> });
 
-		const recent = await getRecentTracks(account.value.username, { limit: 1, extended: true });
+		const recent = await ctx.services.lastfm.getRecentTracks(account.value.username, {
+			limit: 1,
+			extended: true,
+		});
 		if (!recent.ok || !recent.value.track.length) {
 			return void await ctx.reply({ ...<NoScrobbles /> });
 		}
@@ -126,7 +123,7 @@ export default defineCommand({
 		const live = track["@attr"]?.nowplaying === "true";
 		const totalScrobbles = Number(recent.value["@attr"]?.total) || undefined;
 
-		const directLinks = await resolveSongLinkByQuery(track.artist.name, track.name);
+		const directLinks = await ctx.services.musicLinks.resolveByQuery(track.artist.name, track.name);
 		if (!directLinks.ok) logger.boo(JSON.stringify(directLinks.error, null, "4"));
 		const links = directLinks.ok ? renderPlatformLinks(directLinks.value) : [];
 

@@ -9,7 +9,7 @@ import {
 	assertEditableTable,
 	createPlan,
 	getRequiredColumns,
-	validateAndGetSchema,
+	tableMetadata,
 } from "@kuristina/database/admin";
 import { confirmAndApply, evaluateValues, parseKeyValues, reportCommandError } from "./shared.tsx";
 
@@ -31,8 +31,8 @@ export default defineCommand({
 			const rawValues = parseKeyValues(ctx.args.values);
 			const values = evaluateValues(rawValues);
 
-			const schema = await validateAndGetSchema(ctx.args.table);
-			const columns = schema.columns.map((c) => c.name);
+			const schema = await tableMetadata(ctx.services.db, ctx.args.table);
+			const columns = schema.columnNames;
 
 			const data: Record<string, unknown> = {};
 			for (const [k, v] of Object.entries(values)) {

@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { repositories } from "@kuristina/database";
+import type { Repositories } from "@kuristina/database";
 import { config } from "@kuristina/config";
-import type discord from "../bot.ts";
+import type { DiscordBot } from "../factory.ts";
 
-async function collectMemberIds(bot: typeof discord, guildId: bigint): Promise<Set<bigint>> {
+async function collectMemberIds(bot: DiscordBot, guildId: bigint): Promise<Set<bigint>> {
 	const guild = await bot.cache.guilds.get(guildId);
 	if (!guild?.members) {
 		const members = await bot.gateway.requestMembers(guildId, { limit: 0, query: "" });
@@ -17,7 +17,11 @@ async function collectMemberIds(bot: typeof discord, guildId: bigint): Promise<S
 	return new Set(guild.members.keys());
 }
 
-export async function reconcileGuild(bot: typeof discord, guildId: bigint): Promise<void> {
+export async function reconcileGuild(
+	bot: DiscordBot,
+	repositories: Repositories,
+	guildId: bigint,
+): Promise<void> {
 	const memberIds = await collectMemberIds(bot, guildId);
 	if (!memberIds.size) {
 		logger.warn(`presence: chunk for guild ${guildId} returned no members, skipping`);
@@ -33,15 +37,23 @@ export async function reconcileGuild(bot: typeof discord, guildId: bigint): Prom
 	);
 }
 
-export async function reconcileAllGuilds(bot: typeof discord): Promise<void> {
+export async function reconcileAllGuilds(
+	bot: DiscordBot,
+	repositories: Repositories,
+): Promise<void> {
 	for await (const [guildId] of bot.cache.guilds.memory) {
-		await reconcileGuild(bot, guildId);
+		await reconcileGuild(bot, repositories, guildId);
 	}
 }
 
-export function schedulePresenceReconciliation(bot: typeof discord): void {
+export function schedulePresenceReconciliation(
+	bot: DiscordBot,
+	repositories: Repositories,
+): () => void {
 	const intervalMs = config.presence.reconcileIntervalMs;
-	if (intervalMs <= 0) return;
+	if (intervalMs <= 0) return () => {};
 
-	setInterval(() => void reconcileAllGuilds(bot), intervalMs);
+	const timer = setInterval(() => void reconcileAllGuilds(bot, repositories), intervalMs);
+	Deno.unrefTimer(timer);
+	return () => clearInterval(timer);
 }

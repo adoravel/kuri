@@ -1,19 +1,15 @@
 {
 	"workspace": [
 		"./apps/*",
-		"./packages/commands",
-		"./packages/config",
-		"./packages/core",
-		"./packages/database",
-		"./packages/errors",
-		"./packages/services",
-		"./packages/i18n",
+		"./packages/*",
 		"./packages/platform/discord/*"
 	],
 	"tasks": {
-		"check": "deno check apps/bot/main.ts",
-		"dev": "deno run --watch -P=default apps/bot/main.ts",
-		"start": "deno run -P=default apps/bot/main.ts",
+		"check": "deno check apps/kuri/main.ts apps/bot/main.ts apps/client/main.ts",
+		"dev": "WATCH=1 sh deno run -P=default apps/kuri/main.ts",
+		"start": "deno run -P=default apps/kuri/main.ts",
+		"start:bot": "deno run -P=default apps/bot/main.ts",
+		"start:client": "deno run -P=default apps/client/main.ts",
 		"lint": "deno lint",
 		"test": "deno test --allow-env --allow-read",
 		"add-header": "deno fmt && deno run --allow-read --allow-write scripts/copyright.ts"

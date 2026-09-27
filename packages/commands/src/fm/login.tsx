@@ -5,8 +5,7 @@
  */
 
 import { defineCommand } from "@kuristina/commands/core";
-import { flatMapAsync, mapAsync, waitForInteraction } from "@kuristina/core";
-import { repositories } from "@kuristina/database";
+import { flatMap, map, waitForInteraction } from "@kuristina/core";
 import { Theme } from "@kuristina/discord-ui";
 import { getAuthToken, pollForSession } from "@kuristina/services/music/last.fm";
 import { ackWithMessage, ButtonStyles, type Interaction } from "@kuristina/discord-bot";
@@ -131,7 +130,7 @@ export const login = defineCommand({
 			return;
 		}
 
-		const acked = await ackWithMessage(clicked, {
+		const acked = await ackWithMessage(ctx.platform, clicked, {
 			...<AuthLinkMessage authUrl={tokenData.authUrl} />,
 			ephemeral: true,
 		}).then(() => true).catch((e) => {
@@ -142,9 +141,9 @@ export const login = defineCommand({
 			return void await ctx.error("couldn't send you the auth link, try again?");
 		}
 
-		const linked = flatMapAsync(pollForSession(tokenData.token))((session) =>
-			mapAsync<void, any>(
-				repositories.scrobble.link(
+		const linked = flatMap(pollForSession(tokenData.token))((session) =>
+			map(
+				ctx.services.repos.scrobble.link(
 					ctx.user.id,
 					"last.fm",
 					session.username,
@@ -165,8 +164,8 @@ export const logout = defineCommand({
 	category: "fm",
 	cooldownMs: 3_000,
 	async exec(ctx) {
-		const unlink = repositories.scrobble.unlink(ctx.user.id, "last.fm");
-		await mapAsync(unlink)(async () => void await ctx.reply(<UnlinkedMessage />));
+		const unlinked = await ctx.resolve(ctx.services.repos.scrobble.unlink(ctx.user.id, "last.fm"));
+		if (unlinked !== undefined) await ctx.reply(<UnlinkedMessage />);
 	},
 });
 
@@ -176,10 +175,10 @@ export const status = defineCommand({
 	category: "fm",
 	cooldownMs: 3_000,
 	async exec(ctx) {
-		const current = await repositories.scrobble.getDefault(ctx.user.id);
-		await mapAsync(Promise.resolve(current))(async (account) => {
-			if (!account) return void await ctx.reply({ ...<NoAccountMessage /> });
-			await ctx.reply(<AccountMessage provider={account.provider} username={account.username} />);
-		});
+		const current = await ctx.resolve(ctx.services.repos.scrobble.getDefault(ctx.user.id));
+		if (current === undefined) return;
+
+		if (!current) return void await ctx.reply({ ...<NoAccountMessage /> });
+		await ctx.reply(<AccountMessage provider={current.provider} username={current.username} />);
 	},
 });

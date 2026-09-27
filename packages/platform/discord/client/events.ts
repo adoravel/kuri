@@ -4,25 +4,42 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import client from "@kuristina/discord-client";
-import * as markov from "@kuristina/services/markov";
-import { safePromise } from "@kuristina/core";
-import discord from "@kuristina/discord-bot";
+import type { DiscordClient } from "./factory.ts";
+import type { MessageCreate, ReactionAdd } from "./types/mod.ts";
+import type { Services } from "@kuristina/domain/services";
+import { createMarkovHandler } from "@kuristina/domain/markov";
+import { safe } from "@kuristina/core";
 
-export const reactionAdd: typeof client.events.reactionAdd = async (reaction) => {
-	const message = await safePromise(
-		discord.helpers.getMessage(reaction.channelId, reaction.messageId),
-	);
+export function createClientEvents(
+	client: DiscordClient,
+	services: Services,
+): {
+	reactionAdd: ReactionAdd;
+	messageCreate: MessageCreate;
+} {
+	const markovHandler = createMarkovHandler(services);
 
-	if (!message.ok) {
-		return logger.boo("markov: failed to fetch message:", message.error);
-	}
+	return {
+		reactionAdd: async (reaction) => {
+			const message = await safe(
+				client.helpers.getMessages(reaction.channelId, { around: reaction.messageId, limit: 1 }),
+			);
+			if (!message.ok) {
+				logger.boo("markov: failed to fetch message:", message.error);
+				return;
+			}
+			if (!message.value.length) return;
 
-	const result = await markov.translateReactedMessage(client, message.value, reaction);
-	if (!result.ok) logger.boo("markov(reactionAdd):", result.error);
-};
-
-export const messageCreate: typeof client.events.messageCreate = async (message) => {
-	const result = await markov.messageCreate(client, message);
-	if (!result.ok) logger.boo("markov(messageCreate):", result.error);
-};
+			const result = await markovHandler.translateReactedMessage(
+				client,
+				message.value[0],
+				reaction,
+			);
+			if (!result.ok) logger.boo("markov(reactionAdd):", result.error);
+		},
+		messageCreate: async (message) => {
+			const result = await markovHandler.messageCreate(client, message);
+			if (!result.ok) logger.boo("markov(messageCreate):", result.error);
+		},
+	};
+}

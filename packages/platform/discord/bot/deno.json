@@ -2,6 +2,7 @@
 	"name": "@kuristina/discord-bot",
 	"exports": {
 		".": "./mod.ts",
+		"./types": "./types/mod.ts",
 		"./restart": "./lifecycle/restart.ts"
 	},
 	"imports": {

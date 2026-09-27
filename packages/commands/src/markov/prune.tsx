@@ -4,9 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { arg, defineCommand } from "@kuristina/commands/core";
-import { ownerOnly } from "@kuristina/commands/core";
-import { database } from "@kuristina/database";
+import { arg, defineCommand, ownerOnly } from "@kuristina/commands/core";
 import { createPlan } from "@kuristina/database/admin";
 import { confirmAndApply } from "../dev/database/shared.tsx";
 
@@ -28,34 +26,30 @@ export default defineCommand({
 	async exec(ctx) {
 		const minCount = ctx.args.count ?? 1;
 
-		const rows = await database.selectFrom("markov_chain")
-			.select(["id", "prefix", "suffix", "count"])
-			.where("count", "<=", minCount)
-			.execute();
+		const rows = await ctx.resolve(ctx.services.repos.markov.findNoise(minCount));
+		if (!rows) return;
 
 		if (!rows.length) {
 			return void await ctx.reply({ content: `nothing to prune at count <= ${minCount}` });
 		}
-
 		if (rows.length > MAX_PRUNE_ROWS) {
 			return void await ctx.error(
-				`count <= ${minCount} matches ${rows.length} rows, which is too many to preview/undo safely ` +
-					`(cap: ${MAX_PRUNE_ROWS}). raise the threshold's specificity or lower min count to shrink the match set`,
+				`count <= ${minCount} matches ${rows.length} rows, which is too many to preview/undo ` +
+					`safely (cap: ${MAX_PRUNE_ROWS}). raise the min count to shrink the match set`,
 			);
 		}
 
-		const changes = rows.map((r) => ({
-			table: "markov_chain" as const,
-			pk: { id: r.id },
-			before: r,
-			after: null,
-		}));
-
-		const plan = createPlan(
-			`prune markov_chain entries with count <= ${minCount} (${rows.length} rows)`,
-			changes,
+		await confirmAndApply(
+			ctx,
+			createPlan(
+				`prune markov_chain entries with count <= ${minCount} (${rows.length} rows)`,
+				rows.map((row) => ({
+					table: "markov_chain",
+					pk: { id: row.id },
+					before: { ...row },
+					after: null,
+				})),
+			),
 		);
-
-		await confirmAndApply(ctx, plan);
 	},
 });

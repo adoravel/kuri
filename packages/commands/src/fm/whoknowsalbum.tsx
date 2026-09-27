@@ -6,7 +6,6 @@
 
 import { arg, defineCommand } from "@kuristina/commands/core";
 import { Theme } from "@kuristina/discord-ui";
-import { getScrobbleProvider } from "@kuristina/services/music/scrobbling";
 import {
 	extractParagraphs,
 	fetchLinkedAccounts,
@@ -117,7 +116,7 @@ export default defineCommand({
 			return void await ctx.error("This command can only be used in a server.");
 		}
 
-		const provider = getScrobbleProvider(PROVIDER);
+		const provider = ctx.services.scrobbling;
 		const albumInfo = await provider.album.getInfo(artist, album, false);
 		if (!albumInfo.ok) {
 			return void await ctx.error("Album not found.");
@@ -125,7 +124,7 @@ export default defineCommand({
 
 		const { value: resolvedAlbum } = albumInfo;
 
-		const linked = await fetchLinkedAccounts(ctx.guildId);
+		const linked = await fetchLinkedAccounts(ctx.services, ctx.guildId);
 		if (!linked.ok || !linked.value?.size) {
 			return void await ctx.error("No one has linked an account yet.");
 		}

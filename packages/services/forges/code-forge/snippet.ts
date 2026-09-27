@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { tryAsync, withRetry } from "@kuristina/core";
+import { safe, withRetry } from "@kuristina/core";
 import { err, ok, type Result } from "@kuristina/core";
 import { Errors, type NetworkError } from "@kuristina/core";
 import { config } from "@kuristina/config";
@@ -57,7 +57,7 @@ export async function fetchLineRangeSnippet(
 	ref: BlobLineRange,
 	sourceTag: string,
 ): Promise<Result<Snippet, NetworkError>> {
-	const response = await tryAsync(() =>
+	const response = await safe(() =>
 		withRetry(
 			() =>
 				fetch(rawUrl, {
@@ -74,7 +74,7 @@ export async function fetchLineRangeSnippet(
 		);
 	}
 
-	const body = await tryAsync(() => response.value.text());
+	const body = await safe(() => response.value.text());
 	if (!body.ok) return body;
 
 	const lines = body.value.split("\n");

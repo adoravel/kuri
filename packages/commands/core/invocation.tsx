@@ -7,7 +7,7 @@
 import type {
 	Channel,
 	CreateMessageOptions,
-	DiscordPlatform,
+	DiscordBot,
 	Guild,
 	Interaction,
 	Member,
@@ -17,6 +17,7 @@ import type {
 import type { AsyncResult, Result } from "@kuristina/core";
 import { type AppError, describe } from "@kuristina/errors";
 import { ErrorMessage, SuccessMessage } from "@kuristina/discord-ui";
+import type { Services } from "@kuristina/domain/services";
 
 export interface InvocationBase<Args = Record<string, unknown>> {
 	readonly surface: "text" | "slash";
@@ -25,8 +26,10 @@ export interface InvocationBase<Args = Record<string, unknown>> {
 	readonly member?: Member;
 	readonly guildId?: bigint;
 	readonly channelId: bigint;
-	readonly platform: DiscordPlatform;
+	readonly platform: DiscordBot;
 	readonly invokedAt: number;
+
+	readonly services: Services;
 
 	readonly raw:
 		| { readonly kind: "text"; readonly message: Message; readonly isReinvocation: boolean }

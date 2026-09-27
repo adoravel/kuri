@@ -6,7 +6,7 @@
 
 import { encodeBase64 } from "@std/encoding/base64";
 import { encodeHex } from "@std/encoding/hex";
-import { repositories } from "@kuristina/database";
+import type { Repositories } from "@kuristina/database";
 import {
 	type IconManifestEntry,
 	planIconReconciliation,
@@ -14,7 +14,7 @@ import {
 	setIconManifest,
 	VENDORED_ICONS_DIR,
 } from "@kuristina/discord-ui";
-import type discord from "../bot.ts";
+import type { DiscordBot } from "../factory.ts";
 
 async function hash(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
 	return encodeHex(await crypto.subtle.digest("SHA-256", bytes));
@@ -31,7 +31,10 @@ async function loadVendored() {
 	return out;
 }
 
-export async function reconcileIcons(bot: typeof discord): Promise<void> {
+export async function reconcileIcons(
+	bot: DiscordBot,
+	repositories: Repositories,
+): Promise<void> {
 	const existing = await repositories.icon.getAll();
 	if (!existing.ok) {
 		logger.boo("icons: failed to read icon_emojis:", existing.error);

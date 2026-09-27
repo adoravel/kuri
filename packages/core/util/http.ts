@@ -6,7 +6,7 @@
 
 import { type RetryOptions, withRetry } from "./retry.ts";
 import { Errors, type NetworkError } from "../errors.ts";
-import { err, ok, type Result } from "../result.ts";
+import { err, ok, type Result } from "../lib/result.ts";
 
 export interface FetchOptions<E = NetworkError> extends RequestInit {
 	retry?: RetryOptions;

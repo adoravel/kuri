@@ -6,7 +6,7 @@
 
 import { encodeHex } from "@std/encoding/hex";
 import { fetchWithRetry } from "@kuristina/core";
-import { repositories } from "@kuristina/database";
+import type { Repositories } from "@kuristina/database";
 import { config } from "@kuristina/config";
 
 interface GuildProfilePayload {
@@ -38,7 +38,10 @@ async function hash(payload: unknown): Promise<string> {
 	return encodeHex(await crypto.subtle.digest("SHA-256", bytes));
 }
 
-export async function syncGuildProfile(guildId: bigint): Promise<void> {
+export async function syncGuildProfile(
+	repositories: Repositories,
+	guildId: bigint,
+): Promise<void> {
 	const payload = buildPayload();
 	if (!payload) return;
 

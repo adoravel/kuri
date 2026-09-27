@@ -5,11 +5,10 @@
  */
 
 import { config } from "@kuristina/config";
-import type { NetworkError, Result } from "@kuristina/core";
+import type { CacheStore, NetworkError, Result } from "@kuristina/core";
 import { fetchWithRetry, ok } from "@kuristina/core";
 import { fetchLineRangeSnippet, type ForgeRepoMeta, type Snippet } from "../code-forge/mod.ts";
 import type { GitHubBlobRef, GitHubSnippet } from "./types.ts";
-import { repositories } from "@kuristina/database";
 
 export async function fetchSnippet(
 	ref: GitHubBlobRef,
@@ -18,13 +17,16 @@ export async function fetchSnippet(
 	return await fetchLineRangeSnippet(url, ref, "GitHub") as Result<Snippet, NetworkError>;
 }
 
+const REPO_META_TTL_SECONDS = 3 * 60 * 60;
+
 export async function fetchRepoMeta(
+	cache: CacheStore,
 	owner: string,
 	repo: string,
 ): Promise<Result<ForgeRepoMeta, NetworkError>> {
 	const cacheKey = `github-repo-meta:${owner}/${repo}`;
-	const cached = await repositories.cache.get<ForgeRepoMeta>(cacheKey, 3 * 60 * 60);
-	if (cached.ok && cached.value) return ok(cached.value);
+	const cached = await cache.get<ForgeRepoMeta>(cacheKey, REPO_META_TTL_SECONDS);
+	if (cached) return ok(cached);
 
 	const url = `https://api.github.com/repos/${owner}/${repo}`;
 	const result = await fetchWithRetry<{
@@ -40,10 +42,13 @@ export async function fetchRepoMeta(
 		retry: { maxAttempts: 2, baseDelayMs: 500 },
 	});
 	if (!result.ok) return result;
-	return ok({
+
+	const meta: ForgeRepoMeta = {
 		description: result.value.description || undefined,
 		stars: result.value.stargazers_count ?? 0,
 		language: result.value.language || undefined,
 		avatarUrl: result.value.owner?.avatar_url,
-	});
+	};
+	await cache.set(cacheKey, meta);
+	return ok(meta);
 }

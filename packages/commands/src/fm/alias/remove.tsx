@@ -27,15 +27,13 @@ export default defineCommand({
 		const alias = ctx.args.alias.trim();
 		const filter = { name_key: alias.toLowerCase() };
 
-		const before = await findMatchingRows("artist_aliases", filter, 1);
-		if (!before) {
-			return void await ctx.error(`no alias found for "${alias}"`);
-		}
+		const before = await findMatchingRows(ctx.services.db, "artist_aliases", filter, 1);
+		if (!before.length) return void await ctx.error(`no alias found for "${alias}"`);
 
 		const plan = createPlan(`remove alias "${alias}"`, [{
 			table: "artist_aliases",
 			pk: filter,
-			before: before[0] as any,
+			before: before[0],
 			after: null,
 		}]);
 

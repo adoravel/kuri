@@ -6,7 +6,7 @@
 
 import { describe } from "@kuristina/errors";
 import { defineCommand, string } from "@kuristina/commands/core";
-import type { Bot, Message } from "@kuristina/discord-bot";
+import type { DiscordBot, Message } from "@kuristina/discord-bot";
 import { deepl } from "@kuristina/services/translation";
 import {
 	formatLanguage,
@@ -40,7 +40,10 @@ export function visibleLength(text: string): number {
 	return [...stripEmoji(text)].length;
 }
 
-async function getRepliedMessage(platform: Bot, message: Message): Promise<Message | undefined> {
+async function getRepliedMessage(
+	platform: DiscordBot,
+	message: Message,
+): Promise<Message | undefined> {
 	const ref = message.messageReference;
 	if (!ref?.messageId) return undefined;
 
@@ -51,7 +54,10 @@ async function getRepliedMessage(platform: Bot, message: Message): Promise<Messa
 	}
 }
 
-async function getMentionedUsersLastMessages(platform: Bot, message: Message): Promise<string[]> {
+async function getMentionedUsersLastMessages(
+	platform: DiscordBot,
+	message: Message,
+): Promise<string[]> {
 	const mentions = message.mentions;
 	if (!mentions?.length) return [];
 
@@ -78,7 +84,7 @@ async function getMentionedUsersLastMessages(platform: Bot, message: Message): P
 }
 
 async function getTranslationText(
-	platform: Bot,
+	platform: DiscordBot,
 	message: Message | undefined,
 	input: string,
 	threshold: number,

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { repositories } from "./mod.ts";
+import type { StateRepository } from "./state.ts";
 
 const STATE_KEY = "pending_restart";
 
@@ -13,16 +13,22 @@ export interface PendingRestart {
 	messageId: bigint;
 }
 
-export async function markPendingRestart(channelId: bigint, messageId: bigint): Promise<void> {
-	await repositories.state.set(
+export function markPendingRestart(
+	state: StateRepository,
+	channelId: bigint,
+	messageId: bigint,
+): Promise<unknown> {
+	return state.set(
 		STATE_KEY,
 		JSON.stringify({ channelId: channelId.toString(), messageId: messageId.toString() }),
 	);
 }
 
-export async function takePendingRestart(): Promise<PendingRestart | null> {
-	const stored = await repositories.state.get(STATE_KEY);
+export async function takePendingRestart(state: StateRepository): Promise<PendingRestart | null> {
+	const stored = await state.get(STATE_KEY);
 	if (!stored.ok || !stored.value) return null;
+
+	await state.delete(STATE_KEY);
 
 	try {
 		const { channelId, messageId } = JSON.parse(stored.value) as {
@@ -32,7 +38,5 @@ export async function takePendingRestart(): Promise<PendingRestart | null> {
 		return { channelId: BigInt(channelId), messageId: BigInt(messageId) };
 	} catch {
 		return null;
-	} finally {
-		await repositories.state.delete(STATE_KEY);
 	}
 }

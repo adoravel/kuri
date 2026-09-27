@@ -4,13 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { arg, defineCommand } from "@kuristina/commands/core";
-import { ownerOnly } from "@kuristina/commands/core";
-import { database } from "@kuristina/database";
-import { createDeletePlan } from "@kuristina/database/admin";
+import { arg, defineCommand, ownerOnly } from "@kuristina/commands/core";
+import { createPlan, type RowChange } from "@kuristina/database/admin";
 import { confirmAndApply } from "../dev/database/shared.tsx";
 
 const MAX_FORGET_ROWS = 65535;
+const MIN_PATTERN_LENGTH = 3;
 
 export default defineCommand({
 	aliases: ["forget", "forgor"],
@@ -22,34 +21,27 @@ export default defineCommand({
 		pattern: arg.string({
 			description: "substring to forget (min 3 characters)",
 			required: true,
-			minLength: 3,
+			minLength: MIN_PATTERN_LENGTH,
 			greedy: true,
 		}),
 	},
 	async exec(ctx) {
 		const pattern = ctx.args.pattern.trim();
-		if (pattern.length < 3) {
-			return void await ctx.error("gimme a string at least 3 characters long to forget");
+		if (pattern.length < MIN_PATTERN_LENGTH) {
+			return void await ctx.error(
+				`gimme a string at least ${MIN_PATTERN_LENGTH} characters long to forget`,
+			);
 		}
 
-		const like = `%${pattern}%`;
+		const matches = await ctx.resolve(ctx.services.repos.markov.findMatching(pattern));
+		if (!matches) return;
 
-		const [chainRows, wordRows] = await Promise.all([
-			database.selectFrom("markov_chain")
-				.select(["id", "prefix", "suffix", "count"])
-				.where((eb) => eb.or([eb("prefix", "like", like), eb("suffix", "like", like)]))
-				.execute(),
-			database.selectFrom("markov_words")
-				.select(["word", "count"])
-				.where("word", "like", like)
-				.execute(),
-		]);
+		const { chain, words } = matches;
+		const total = chain.length + words.length;
 
-		const total = chainRows.length + wordRows.length;
 		if (!total) {
 			return void await ctx.reply({ content: `nothing in markov's memory matches "${pattern}"` });
 		}
-
 		if (total > MAX_FORGET_ROWS) {
 			return void await ctx.error(
 				`"${pattern}" matches ${total} rows, which is too many to preview/undo safely ` +
@@ -57,29 +49,27 @@ export default defineCommand({
 			);
 		}
 
-		const changes = [
-			...chainRows.map((r) => ({
-				table: "markov_chain" as const,
-				pk: { id: r.id },
-				before: r as Record<string, unknown>,
+		const changes: RowChange[] = [
+			...chain.map((row) => ({
+				table: "markov_chain",
+				pk: { id: row.id },
+				before: { ...row },
 				after: null,
 			})),
-			...wordRows.map((r) => ({
-				table: "markov_words" as const,
-				pk: { word: r.word },
-				before: r as Record<string, unknown>,
+			...words.map((row) => ({
+				table: "markov_words",
+				pk: { word: row.word },
+				before: { ...row },
 				after: null,
 			})),
 		];
 
-		const plan = createDeletePlan(
-			"markov_chain",
-			{},
-			{},
-			`forget "${pattern}" (${chainRows.length} chain entries, ${wordRows.length} words)`,
+		await confirmAndApply(
+			ctx,
+			createPlan(
+				`forget "${pattern}" (${chain.length} chain entries, ${words.length} words)`,
+				changes,
+			),
 		);
-		(plan as any).changes = changes;
-
-		await confirmAndApply(ctx, plan);
 	},
 });

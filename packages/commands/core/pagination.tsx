@@ -73,7 +73,7 @@ export async function runPaginator(ctx: Invocation, opts: PaginatorOptions): Pro
 		cancelWaiter(closeId);
 
 		if (winner.interaction) {
-			await ackDeferUpdate(winner.interaction).catch((e) =>
+			await ackDeferUpdate(ctx.platform, winner.interaction).catch((e) =>
 				logger.warn(`paginator(${opts.id}): failed to ack click: ` + e)
 			);
 		}

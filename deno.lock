@@ -1,22 +1,16 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@db/sqlite@0.13": "0.13.0",
-    "jsr:@denosaurs/plug@1": "1.1.0",
+    "jsr:@kysely/kysely@0.29.4": "0.29.4",
     "jsr:@kysely/kysely@~0.29.4": "0.29.4",
     "jsr:@std/assert@^1.0.19": "1.0.19",
     "jsr:@std/collections@^1.1.3": "1.3.0",
-    "jsr:@std/encoding@1": "1.0.11",
     "jsr:@std/encoding@^1.0.11": "1.0.11",
     "jsr:@std/encoding@^1.0.7": "1.0.11",
-    "jsr:@std/fmt@1": "1.0.10",
     "jsr:@std/fmt@^1.0.10": "1.0.10",
-    "jsr:@std/fs@1": "1.0.24",
     "jsr:@std/fs@^1.0.24": "1.0.24",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "jsr:@std/internal@^1.0.14": "1.0.14",
-    "jsr:@std/path@1": "1.1.6",
-    "jsr:@std/path@1.0": "1.0.9",
     "jsr:@std/path@^1.0.8": "1.1.6",
     "jsr:@std/path@^1.1.5": "1.1.6",
     "jsr:@std/toml@^1.0.11": "1.0.11",
@@ -24,26 +18,12 @@
     "npm:@discordeno/types@^22.0.1-next.5f7a06c": "22.0.1-next.ff7c51d",
     "npm:@resvg/resvg-js@^2.6.2": "2.6.2",
     "npm:@types/culori@^4.0.1": "4.0.1",
+    "npm:better-sqlite3@13": "13.0.3",
+    "npm:better-sqlite3@^13.0.3": "13.0.3",
     "npm:culori@^4.0.2": "4.0.2",
     "npm:dd-cache-proxy@^2.9.0": "2.9.0_@discordeno+bot@22.0.1-next.ff7c51d"
   },
   "jsr": {
-    "@db/sqlite@0.13.0": {
-      "integrity": "4545c635e0b3d4ddfdc0f2240f932f24b8ad0178e9c2e3a0f9403e7b18ae2fb5",
-      "dependencies": [
-        "jsr:@denosaurs/plug",
-        "jsr:@std/path@1.0"
-      ]
-    },
-    "@denosaurs/plug@1.1.0": {
-      "integrity": "eb2f0b7546c7bca2000d8b0282c54d50d91cf6d75cb26a80df25a6de8c4bc044",
-      "dependencies": [
-        "jsr:@std/encoding@1",
-        "jsr:@std/fmt@1",
-        "jsr:@std/fs@1",
-        "jsr:@std/path@1"
-      ]
-    },
     "@kysely/kysely@0.29.4": {
       "integrity": "73bc0c46efb9a64b0fd613d8a3250fccd24ab5bbd1bba27b3f9b50482700f6d5"
     },
@@ -71,9 +51,6 @@
     },
     "@std/internal@1.0.14": {
       "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
-    },
-    "@std/path@1.0.9": {
-      "integrity": "260a49f11edd3db93dd38350bf9cd1b4d1366afa98e81b86167b4e3dd750129e"
     },
     "@std/path@1.1.6": {
       "integrity": "c68485c2a4dfbb5ae3cc74fae4e8c4e5d874cf8a8ed12927917235c758b46cbe",
@@ -205,6 +182,12 @@
     "@types/culori@4.0.1": {
       "integrity": "sha512-43M51r/22CjhbOXyGT361GZ9vncSVQ39u62x5eJdBQFviI8zWp2X5jzqg7k4M6PVgDQAClpy2bUe2dtwEgEDVQ=="
     },
+    "better-sqlite3@13.0.3": {
+      "integrity": "sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==",
+      "dependencies": [
+        "node-addon-api"
+      ]
+    },
     "culori@4.0.2": {
       "integrity": "sha512-1+BhOB8ahCn4O0cep0Sh2l9KCOfOdY+BXJnKMHFFzDEouSr/el18QwXEMRlOj9UY5nCeA8UN3a/82rUWRBeyBw=="
     },
@@ -216,6 +199,9 @@
     },
     "fzstd@0.1.1": {
       "integrity": "sha512-dkuVSOKKwh3eas5VkJy1AW1vFpet8TA/fGmVA5krThl8YcOVE/8ZIoEA1+U1vEn5ckxxhLirSdY837azmbaNHA=="
+    },
+    "node-addon-api@8.9.2": {
+      "integrity": "sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg=="
     },
     "ws@8.21.1": {
       "integrity": "sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw=="
@@ -244,9 +230,16 @@
       },
       "packages/database": {
         "dependencies": [
-          "jsr:@db/sqlite@0.13",
           "jsr:@kysely/kysely@~0.29.4",
-          "jsr:@std/path@^1.0.8"
+          "jsr:@std/assert@^1.0.19",
+          "jsr:@std/path@^1.0.8",
+          "npm:better-sqlite3@^13.0.3"
+        ]
+      },
+      "packages/domain": {
+        "dependencies": [
+          "jsr:@std/fmt@^1.0.10",
+          "npm:@discordeno/types@^22.0.1-next.5f7a06c"
         ]
       },
       "packages/platform/discord/bot": {

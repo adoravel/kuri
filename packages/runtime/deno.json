@@ -1,0 +1,6 @@
+{
+	"name": "@kuristina/runtime",
+	"exports": {
+		".": "./mod.ts"
+	}
+}

@@ -5,9 +5,8 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { mapAsync } from "@kuristina/core";
+import { map } from "@kuristina/core";
 import { Theme } from "@kuristina/discord-ui";
-import { getScrobbleProvider } from "@kuristina/services/music/scrobbling";
 import {
 	fetchLinkedAccounts,
 	fetchPlaycounts,
@@ -114,8 +113,8 @@ export default defineCommand({
 			return void await ctx.error("This command can only be used in a server.");
 		}
 
-		const provider = getScrobbleProvider(PROVIDER);
-		const trackInfo = await mapAsync(provider.track.getInfo(artist, track, false))((info) => ({
+		const provider = ctx.services.scrobbling;
+		const trackInfo = await map(provider.track.getInfo(artist, track, false))((info) => ({
 			name: info.name,
 			artist: info.artist,
 			image: info.imageUrl,
@@ -128,7 +127,7 @@ export default defineCommand({
 
 		const { value: resolvedTrack } = trackInfo;
 
-		const linked = await fetchLinkedAccounts(ctx.guildId);
+		const linked = await fetchLinkedAccounts(ctx.services, ctx.guildId);
 		if (!linked.ok || !linked.value?.size) {
 			return void await ctx.error("No one has linked an account yet.");
 		}

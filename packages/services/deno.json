@@ -1,12 +1,10 @@
 {
 	"name": "@kuristina/services",
 	"exports": {
-		"./markov": "./markov/mod.ts",
 		"./translation": "./translation/mod.ts",
 		"./translation/deepl": "./translation/deepl/mod.ts",
 		"./music/last.fm": "./music/lastfm/mod.ts",
 		"./music/brainz": "./music/brainz/mod.ts",
-		"./music/scrobbling": "./music/scrobbling/mod.ts",
 		"./music/links": "./music/links/mod.ts",
 		"./music/metadata": "./music/metadata/mod.ts",
 		"./forges/github": "./forges/github/mod.ts",

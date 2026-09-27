@@ -5,7 +5,6 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
 import { allowedAliasManagers } from "./shared.tsx";
 
 export default defineCommand({
@@ -25,12 +24,12 @@ export default defineCommand({
 			return void await ctx.error("both alias and canonical names are required");
 		}
 
-		const result = await repositories.artistAliases.link(alias, canonical, "manual");
+		const result = await ctx.services.repos.artistAliases.link(alias, canonical, "manual");
 		if (!result.ok) {
 			return void await ctx.error(`failed to add alias: ${result.error.message}`);
 		}
 
-		const group = await repositories.artistAliases.getGroup(canonical);
+		const group = await ctx.services.repos.artistAliases.getGroup(canonical);
 		if (!group.ok) {
 			return void await ctx.success(`added alias "${alias}" → "${canonical}"`);
 		}

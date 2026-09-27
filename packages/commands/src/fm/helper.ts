@@ -5,8 +5,7 @@
  */
 
 import { type AsyncResult, mapWithConcurrency, ok } from "@kuristina/core";
-import { getRecentTracks } from "@kuristina/services/music/last.fm";
-import { repositories } from "@kuristina/database";
+import type { Services } from "@kuristina/domain/services";
 import type { AppError } from "@kuristina/errors";
 import { md } from "@kuristina/discord-ui";
 
@@ -97,11 +96,12 @@ export function parseMusicQuery(query?: string): [string | undefined, string | u
 	return [artist, work];
 }
 
-export async function fetchLinkedAccounts(
-	guildId: bigint,
+export function fetchLinkedAccounts(
+	services: Services,
+	guildId: bigint | undefined,
 ): AsyncResult<Map<bigint, string> | undefined, AppError> {
-	if (!guildId) return ok(undefined);
-	return await repositories.scrobble.getAllForProviderInGuild(PROVIDER, guildId);
+	if (!guildId) return Promise.resolve(ok(undefined));
+	return services.repos.scrobble.getAllForProviderInGuild(PROVIDER, guildId);
 }
 
 export async function fetchPlaycounts<T extends HasScrobbleData>(
@@ -148,8 +148,22 @@ export function rankResults<T extends HasScrobbleData>(
 
 type ResolveResult = { artist: string | undefined; track: string | undefined };
 
+export interface MusicContext {
+	readonly user: { id: bigint };
+	readonly services: Services;
+	readonly args: { query?: string; artist?: string; track?: string };
+}
+
+async function latestScrobble(ctx: { user: { id: bigint }; services: Services }) {
+	const own = await ctx.services.repos.scrobble.getDefault(ctx.user.id);
+	if (!own.ok || !own.value) return undefined;
+
+	const recent = await ctx.services.lastfm.getRecentTracks(own.value.username, { limit: 1 });
+	return recent.ok ? recent.value.track[0] : undefined;
+}
+
 export async function resolveArtistAndTrack(
-	ctx: { user: { id: bigint }; args: { query?: string; artist?: string; track?: string } },
+	ctx: MusicContext,
 	album?: boolean,
 ): Promise<ResolveResult> {
 	const query = ctx.args.query?.trim();
@@ -162,27 +176,19 @@ export async function resolveArtistAndTrack(
 	}
 
 	if (!artist || !track) {
-		const own = await repositories.scrobble.getDefault(ctx.user.id);
-		if (own.ok && own.value) {
-			const recent = await getRecentTracks(own.value.username, { limit: 1 });
-			const recentTrack = recent.ok ? recent.value.track[0] : undefined;
-			if (recentTrack) {
-				artist = recentTrack.artist["#text"] ?? recentTrack.artist.name;
-				track = album === true
-					? (recentTrack.album?.["#text"] ?? recentTrack.name)
-					: recentTrack.name;
-			}
+		const recent = await latestScrobble(ctx);
+		if (recent) {
+			artist = recent.artist["#text"] ?? recent.artist.name;
+			track = album === true ? (recent.album?.["#text"] ?? recent.name) : recent.name;
 		}
 	}
 
 	return { artist, track };
 }
 
-export async function getLatestArtist(ctx: { user: { id: bigint } }): Promise<string | undefined> {
-	const own = await repositories.scrobble.getDefault(ctx.user.id);
-	if (own.ok && own.value) {
-		const recent = await getRecentTracks(own.value.username, { limit: 1 });
-		const recentTrack = recent.ok ? recent.value.track[0] : undefined;
-		return recentTrack?.artist["#text"] ?? recentTrack?.artist?.name;
-	}
+export async function getLatestArtist(
+	ctx: { user: { id: bigint }; services: Services },
+): Promise<string | undefined> {
+	const recent = await latestScrobble(ctx);
+	return recent?.artist["#text"] ?? recent?.artist?.name;
 }

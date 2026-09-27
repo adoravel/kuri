@@ -13,6 +13,20 @@ export interface ColumnInfo {
 	notNull: boolean;
 	defaultValue: JsonValue | null;
 	isPrimaryKey: boolean;
+	primaryKeyPosition: number;
+}
+
+export interface UniqueConstraint {
+	name: string;
+	columns: string[];
+}
+
+export interface TableMetadata {
+	name: string;
+	columns: ColumnInfo[];
+	columnNames: string[];
+	primaryKeys: string[];
+	uniqueConstraints: UniqueConstraint[];
 }
 
 export interface RowChange {
@@ -27,9 +41,4 @@ export interface MutationPlan {
 	description: string;
 	changes: readonly RowChange[];
 	createdAt: number;
-}
-
-export interface TableSchema {
-	name: string;
-	columns: ColumnInfo[];
 }

@@ -4,19 +4,15 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { InteractionTypes } from "@kuristina/discord-bot";
-import type { Interaction } from "@kuristina/discord-bot";
-
 import type { ArgsShape, CommandSpec } from "./spec.ts";
-import {
-	type CompiledSlashCommand,
-	dispatchAutocomplete,
-	toSlashCommand,
-} from "./slash-adapter.ts";
+import { type CompiledSlashCommand, toSlashCommand } from "./slash-adapter.ts";
 import { registerTextCommand } from "./text-adapter.ts";
 import type { Middleware } from "./middleware.ts";
 
-const slashCommands = new Map<string, { spec: CommandSpec<any>; compiled: CompiledSlashCommand }>();
+export const slashCommands = new Map<
+	string,
+	{ spec: CommandSpec<any>; compiled: CompiledSlashCommand }
+>();
 const allSpecs: CommandSpec<any>[] = [];
 
 const globalMiddleware: Middleware[] = [];
@@ -46,18 +42,4 @@ export function getAllCommands(): readonly CommandSpec<any>[] {
 
 export function getRegisteredSlashCommands(): CompiledSlashCommand[] {
 	return [...slashCommands.values()].map((e) => e.compiled);
-}
-
-export async function dispatchSlashInteraction(interaction: Interaction): Promise<void> {
-	const name = interaction.data?.name;
-	if (!name) return;
-	const entry = slashCommands.get(name);
-	if (!entry) return;
-
-	if (interaction.type === InteractionTypes.ApplicationCommandAutocomplete) {
-		return await dispatchAutocomplete(entry.compiled, interaction);
-	}
-	if (interaction.type === InteractionTypes.ApplicationCommand) {
-		return await entry.compiled.dispatch(interaction);
-	}
 }

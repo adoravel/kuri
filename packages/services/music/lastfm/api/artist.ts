@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { type AsyncResult, mapAsync } from "@kuristina/core";
+import { type AsyncResult, map } from "@kuristina/core";
 import type { LastFmError } from "../errors.ts";
 import type { LastFmImage } from "../types.ts";
 import { request } from "../http.ts";
@@ -74,7 +74,7 @@ export function getArtistInfo(
 
 	type Response = { artist: LastFmArtist };
 
-	return mapAsync(request<Response>("artist.getInfo", params))(($) => ({
+	return map(request<Response>("artist.getInfo", params))(($) => ({
 		...$.artist,
 		highestQualityImage: getHighestQualityImage($.artist.image),
 	}));
@@ -91,7 +91,7 @@ export function getArtistTopTracks(
 		undefined,
 		false,
 	);
-	return mapAsync(top)(($) =>
+	return map(top)(($) =>
 		$.toptracks.track.map((t) => ({ ...t, highestQualityImage: getHighestQualityImage(t.image) }))
 	);
 }
@@ -107,7 +107,7 @@ export function getArtistTopAlbums(
 		undefined,
 		false,
 	);
-	return mapAsync(top)(($) =>
+	return map(top)(($) =>
 		$.topalbums.album.map((a) => ({ ...a, highestQualityImage: getHighestQualityImage(a.image) }))
 	);
 }

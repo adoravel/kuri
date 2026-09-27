@@ -4,79 +4,104 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { log } from "./format.ts";
-import type { LogLevel } from "./levels.ts";
+import { dim } from "./colours.ts";
+import { formatLevelBadge, type LogLevel } from "./levels.ts";
 
 export * from "./colours.ts";
 export * from "./badge.ts";
-export * from "./levels.ts";
-export * from "./progress.ts";
-export * from "./tree.ts";
-export * from "./header.ts";
-export * from "./format.ts";
 
-const formatArgs = (args: unknown[]): string =>
-	args
-		.map((arg) => {
-			if (typeof arg === "string") return arg;
+export type LogEntry = {
+	level?: LogLevel;
+	message: string;
+	args: unknown[];
+	timestamp?: number;
+};
 
-			if (arg instanceof Error) {
-				return arg.stack ?? arg.message ?? String(arg);
-			}
+type Formatter = (entry: LogEntry) => string;
+type Sink = (entry: LogEntry) => void;
 
-			if (typeof arg === "object" && arg !== null) {
-				if (typeof Deno !== "undefined" && typeof Deno.inspect === "function") {
-					try {
-						return Deno.inspect(arg, { colors: true, depth: 4 });
-					} catch { /* no-op */ }
-				}
-
-				try {
-					return JSON.stringify(arg, null, 4);
-				} catch {
-					const name = arg.constructor?.name || "Object";
-					const fallbackMsg = "message" in arg ? String((arg as any).message) : "";
-					const fallbackStatus = "status" in arg ? `(Status: ${(arg as any).status}) ` : "";
-
-					if (fallbackMsg || fallbackStatus) {
-						return `[${name}] ${fallbackStatus}${fallbackMsg}`.trim();
-					}
-					return `[Unserializable ${name}]`;
-				}
-			}
-
-			return String(arg);
-		})
-		.join(" ");
-
-export interface ScopedLogger {
-	info(...args: unknown[]): void;
-	yay(...args: unknown[]): void;
-	warn(...args: unknown[]): void;
-	boo(...args: unknown[]): void;
-	debug(...args: unknown[]): void;
+function formatArg(arg: unknown): string {
+	if (typeof arg === "string") return arg;
+	return Deno.inspect(arg, { colors: true, depth: Infinity, compact: false });
 }
 
-export interface Logger extends ScopedLogger {
-	prefixed(prefix: string, message: string, level?: LogLevel | null): void;
+const formatter = (entry: LogEntry): string => {
+	const ts = dim(`[${new Date(entry.timestamp ?? Date.now()).toLocaleString()}]`);
+	const badge = entry.level ? `${formatLevelBadge(entry.level)} ` : "";
+	const extra = entry.args.length ? ` ${entry.args.map(formatArg).join(" ")}` : "";
+	return `${ts} ${badge}${entry.message}${extra}`;
+};
+
+function toJson(value: unknown): unknown {
+	if (value instanceof Error) {
+		return { name: value.name, message: value.message, stack: value.stack };
+	}
+	return value;
 }
+
+const jsonFormatter = (entry: LogEntry): string => {
+	return JSON.stringify({
+		level: entry.level,
+		message: entry.message,
+		args: entry.args.length ? entry.args.map(toJson) : undefined,
+		timestamp: entry.timestamp ?? Date.now(),
+	});
+};
+
+const write = (entry: LogEntry, line: string): void => {
+	if (entry.level === "error") console.error(line);
+	else console.log(line);
+};
+
+const sink = (format: Formatter): Sink => (entry) => {
+	try {
+		write(entry, format(entry));
+	} catch (e) {
+		write(entry, `${entry.message} (log formatting failed: ${e})`);
+	}
+};
+
+let output: Sink = sink(Deno.env.get("LOG_FORMAT") === "json" ? jsonFormatter : formatter);
+
+export function setLogFormat(format: "human" | "json") {
+	output = sink(format === "json" ? jsonFormatter : formatter);
+}
+
+export interface Logger {
+	info(message: string, ...args: unknown[]): void;
+	yay(message: string, ...args: unknown[]): void;
+	warn(message: string, ...args: unknown[]): void;
+	boo(message: string, ...args: unknown[]): void;
+	debug(message: string, ...args: unknown[]): void;
+	prefixed(badge: string, message: string, ...args: unknown[]): void;
+	log(entry: LogEntry): void;
+	child(fields: Record<string, unknown>): Logger;
+}
+
+function createLogger(defaultArgs: unknown[] = []): Logger {
+	const log = (level: LogLevel | undefined, message: string, args: unknown[]) => {
+		output({ level, message, args: [...defaultArgs, ...args], timestamp: Date.now() });
+	};
+	return {
+		info: (msg, ...args) => log("info", msg, args),
+		yay: (msg, ...args) => log("success", msg, args),
+		warn: (msg, ...args) => log("warn", msg, args),
+		boo: (msg, ...args) => log("error", msg, args),
+		debug: (msg, ...args) => log("debug", msg, args),
+		prefixed: (badge, msg, ...args) => log(undefined, `${badge} ${msg}`, args),
+		log: (entry) => output(entry),
+		child: (fields) => createLogger([...defaultArgs, fields]),
+	};
+}
+
+export function prefixed(badge: string, message: string, metadata?: Record<string, unknown>) {
+	logger.info(`${badge} ${message}`, metadata);
+}
+
+export const logger: Logger = createLogger();
 
 declare global {
 	var logger: Logger;
 }
 
-const createScopedLogger = (prefix = ""): ScopedLogger => ({
-	info: (...args) => log(formatArgs(args), { level: "info", prefix }),
-	yay: (...args) => log(formatArgs(args), { level: "success", prefix }),
-	warn: (...args) => log(formatArgs(args), { level: "warn", prefix }),
-	boo: (...args) => log(formatArgs(args), { level: "error", prefix }),
-	debug: (...args) => log(formatArgs(args), { level: "debug", prefix }),
-});
-
-globalThis.logger = {
-	...createScopedLogger(""),
-
-	prefixed(prefix: string, message: string, level: LogLevel | null = null): any {
-		log(message, { level, prefix });
-	},
-};
+globalThis.logger = logger;

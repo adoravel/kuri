@@ -5,7 +5,6 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
 import { allowedAliasManagers } from "./shared.tsx";
 
 export default defineCommand({
@@ -20,8 +19,8 @@ export default defineCommand({
 		const name = ctx.args.name.trim();
 
 		const [groupResult, canonicalResult] = await Promise.all([
-			repositories.artistAliases.getGroup(name),
-			repositories.artistAliases.getCanonical(name),
+			ctx.services.repos.artistAliases.getGroup(name),
+			ctx.services.repos.artistAliases.getCanonical(name),
 		]);
 
 		if (!groupResult.ok) {

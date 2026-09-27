@@ -13,7 +13,7 @@ import {
 	fetchRows,
 	MAX_PAGE_SIZE,
 	REDACTED_COLUMNS,
-	validateAndGetSchema,
+	tableMetadata,
 } from "@kuristina/database/admin";
 import { reportCommandError } from "./shared.tsx";
 
@@ -44,8 +44,9 @@ export default defineCommand({
 		try {
 			assertEditableTable(ctx.args.table);
 			const table = ctx.args.table;
+			const db = ctx.services.db;
 
-			const total = await countRows(table);
+			const total = await countRows(db, table);
 			const totalPages = Math.max(1, Math.ceil(total / MAX_PAGE_SIZE));
 
 			await runPaginator(ctx, {
@@ -53,10 +54,10 @@ export default defineCommand({
 				totalPages,
 				renderPage: async (page) => {
 					const [rows, schema] = await Promise.all([
-						fetchRows(table, { limit: MAX_PAGE_SIZE, offset: page * MAX_PAGE_SIZE }),
-						validateAndGetSchema(table),
+						fetchRows(db, table, { limit: MAX_PAGE_SIZE, offset: page * MAX_PAGE_SIZE }),
+						tableMetadata(db, table),
 					]);
-					const columns = schema.columns.map((c) => c.name);
+					const columns = schema.columnNames;
 
 					return {
 						content: `**${table}:** page ${page + 1}/${totalPages} (${total} rows)\n\`\`\`json\n${

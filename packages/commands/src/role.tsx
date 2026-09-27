@@ -5,9 +5,8 @@
  */
 
 import { colour, defineCommand } from "@kuristina/commands/core";
-import type { Guild, Role } from "@kuristina/discord-bot";
-import discord, { type Interaction } from "@kuristina/discord-bot";
-import { tryAsync, waitForInteraction } from "@kuristina/core";
+import type { DiscordBot, Guild, Interaction, Role } from "@kuristina/discord-bot";
+import { safe, waitForInteraction } from "@kuristina/core";
 
 const ROLE_MARKER = ".ᐟ〃" as const;
 
@@ -68,35 +67,50 @@ const RoleCard = ({ roles, customId }: {
 const findPersonalRole = (guild: Guild, userId: bigint): Role | undefined =>
 	guild.roles.find((r) => r.name === encode(userId));
 
-const removeColourRoles = (guild: Guild, userId: bigint, memberRoles: bigint[]) =>
+const removeColourRoles = (
+	bot: DiscordBot,
+	guild: Guild,
+	userId: bigint,
+	memberRoles: bigint[],
+) =>
 	Promise.all(
 		guild.roles
 			.filter((r) =>
 				(isColourRole(r) || isPersonalRole(r, userId)) &&
 				memberRoles.includes(r.id)
 			)
-			.map((r) => discord.helpers.removeRole(guild.id, userId, r.id, "colour role update")),
+			.map((r) => bot.helpers.removeRole(guild.id, userId, r.id, "colour role update")),
 	);
 
-async function assignColourRole(guild: Guild, userId: bigint, color: number): Promise<Role> {
+async function assignColourRole(
+	bot: DiscordBot,
+	guild: Guild,
+	userId: bigint,
+	color: number,
+): Promise<Role> {
 	const existing = findPersonalRole(guild, userId);
 
 	const role = existing
-		? await discord.helpers.editRole(
+		? await bot.helpers.editRole(
 			guild.id,
 			existing.id,
 			{ colors: { primaryColor: color } },
 			"arbitrary colour role update",
 		)
-		: await discord.helpers.createRole(guild.id, { name: encode(userId), color }, "colour role");
+		: await bot.helpers.createRole(guild.id, { name: encode(userId), color }, "colour role");
 
-	await discord.helpers.addRole(guild.id, userId, role.id, "arbitrary colour role update");
+	await bot.helpers.addRole(guild.id, userId, role.id, "arbitrary colour role update");
 	return role;
 }
 
-async function handleColourSelection(guild: Guild, userId: bigint, roleId: bigint): Promise<void> {
-	await removeColourRoles(guild, userId, guild.members.get(userId)?.roles ?? []);
-	await discord.helpers.addRole(guild.id, userId, roleId, "selected colour preset");
+async function handleColourSelection(
+	bot: DiscordBot,
+	guild: Guild,
+	userId: bigint,
+	roleId: bigint,
+): Promise<void> {
+	await removeColourRoles(bot, guild, userId, guild.members.get(userId)?.roles ?? []);
+	await bot.helpers.addRole(guild.id, userId, roleId, "selected colour preset");
 }
 
 export default defineCommand({
@@ -112,13 +126,14 @@ export default defineCommand({
 		}),
 	},
 	async exec(ctx) {
+		const bot = ctx.platform;
 		const guild = await ctx.getGuild();
 		if (!guild) return void await ctx.error("guild context is uninitialised");
 
 		if (ctx.args.value !== undefined) {
-			const applied = await tryAsync(async () => {
-				await removeColourRoles(guild, ctx.user.id, ctx.member?.roles ?? []);
-				return await assignColourRole(guild, ctx.user.id, ctx.args.value!);
+			const applied = await safe(async () => {
+				await removeColourRoles(bot, guild, ctx.user.id, ctx.member?.roles ?? []);
+				return await assignColourRole(bot, guild, ctx.user.id, ctx.args.value!);
 			});
 			if (!applied.ok) {
 				return void await ctx.error(`couldn't set your colour role: ${applied.error.message}`);
@@ -131,7 +146,7 @@ export default defineCommand({
 			filter: (i) => i.user?.id === ctx.user.id,
 		});
 
-		const roles = await discord.helpers.getRoles(guild.id);
+		const roles = await bot.helpers.getRoles(guild.id);
 		const answer = await ctx.reply(
 			<RoleCard customId={customId} roles={roles.filter(isColourRole)} />,
 			{ ephemeral: true },
@@ -150,14 +165,14 @@ export default defineCommand({
 			return;
 		}
 
-		const applied = await tryAsync(() => handleColourSelection(guild, ctx.user.id, roleId));
+		const applied = await safe(() => handleColourSelection(bot, guild, ctx.user.id, roleId));
 		if (!applied.ok) {
 			return void await ctx.error("couldn't apply that colour, sorry. ermm try again mayhaps?");
 		}
 
 		await interaction.respond({ content: `-# <@&${roleId}>` }, { isPrivate: true });
 		if (answer) {
-			discord.helpers.deleteMessage(answer.channelId, answer.id).catch(() => undefined);
+			bot.helpers.deleteMessage(answer.channelId, answer.id).catch(() => undefined);
 		}
 	},
 });

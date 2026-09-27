@@ -10,10 +10,12 @@ import {
 	DiscordApplicationIntegrationType,
 	DiscordInteractionContextType,
 	InteractionResponseTypes,
+	InteractionTypes,
 	MessageFlags,
 } from "@discordeno/types";
-import discord, {
+import {
 	ackWithMessage,
+	type DiscordBot,
 	type Interaction,
 	resolveChannel,
 	resolveGuild,
@@ -26,10 +28,11 @@ import { computeSnowflakeTimestamp } from "./snowflake.ts";
 import { classifyContext, type CommandContextKind, isContextAllowed } from "./context-kind.ts";
 import type { Middleware } from "./middleware.ts";
 import { wrapExecution } from "./execution.ts";
-import { badge, bg, fg } from "@kuristina/core";
-import { getGlobalMiddleware } from "./registry.ts";
+import { bg, createBadge, fg } from "@kuristina/core";
+import { getGlobalMiddleware, slashCommands } from "./registry.ts";
+import type { Services } from "@kuristina/domain/services";
 
-const slashBadge = badge({ label: "/command", bg: bg("#5865f2"), fg: fg("#ffffff") });
+const slashBadge = createBadge({ label: "/command", bg: bg("#5865f2"), fg: fg("#ffffff") });
 
 const CONTEXT_MAP: Record<CommandContextKind, DiscordInteractionContextType> = {
 	guild: DiscordInteractionContextType.Guild,
@@ -45,7 +48,12 @@ interface RawOption {
 	focused?: boolean;
 }
 
-function buildInvocationBase<A>(interaction: Interaction, args: A): InvocationBase<A> {
+function buildInvocationBase<A>(
+	platform: DiscordBot,
+	interaction: Interaction,
+	args: A,
+	services: Services,
+): InvocationBase<A> {
 	let acked = false;
 
 	return {
@@ -55,16 +63,21 @@ function buildInvocationBase<A>(interaction: Interaction, args: A): InvocationBa
 		member: interaction.member,
 		guildId: interaction.guildId,
 		channelId: interaction.channelId!,
-		platform: discord,
+		platform,
 		invokedAt: computeSnowflakeTimestamp(interaction.id),
-		getGuild: async () => interaction.guildId ? await resolveGuild(interaction.guildId) : undefined,
-		getChannel: async () =>
-			interaction.channelId ? await resolveChannel(interaction.channelId) : undefined,
+		getGuild: () =>
+			interaction.guildId
+				? resolveGuild(platform, interaction.guildId)
+				: Promise.resolve(undefined),
+		getChannel: () =>
+			interaction.channelId
+				? resolveChannel(platform, interaction.channelId)
+				: Promise.resolve(undefined),
 		raw: { kind: "slash", interaction },
 		defer: async (opts) => {
 			if (acked) return;
 			acked = true;
-			await discord.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+			await platform.helpers.sendInteractionResponse(interaction.id, interaction.token, {
 				type: InteractionResponseTypes.DeferredChannelMessageWithSource,
 				data: opts?.ephemeral ? { flags: MessageFlags.Ephemeral } : undefined,
 			}).catch((e) => {
@@ -75,15 +88,16 @@ function buildInvocationBase<A>(interaction: Interaction, args: A): InvocationBa
 		reply: async (content, opts): Promise<undefined> => {
 			try {
 				if (acked) {
-					await discord.helpers.editOriginalInteractionResponse(interaction.token, content);
+					await platform.helpers.editOriginalInteractionResponse(interaction.token, content);
 				} else {
 					acked = true;
-					await ackWithMessage(interaction, { ...content, ephemeral: opts?.ephemeral });
+					await ackWithMessage(platform, interaction, { ...content, ephemeral: opts?.ephemeral });
 				}
 			} catch (e) {
 				logger.warn("slash reply failed:", e);
 			}
 		},
+		services,
 	};
 }
 
@@ -111,7 +125,8 @@ function toSlashOption(name: string, def: ArgDef<unknown>) {
 export interface CompiledSlashCommand {
 	readonly registration: CreateApplicationCommand;
 	readonly autocomplete: ReadonlyMap<string, AutocompleteHandler>;
-	dispatch(interaction: Interaction): Promise<void>;
+
+	dispatch(bot: DiscordBot, interaction: Interaction, services: Services): Promise<void>;
 }
 
 const isArgumentInclusive = <A, B extends boolean>(def: ArgDef<A, B>) =>
@@ -219,7 +234,7 @@ export function toSlashCommand<A extends ArgsShape>(spec: CommandSpec<A>): Compi
 	return {
 		registration,
 		autocomplete,
-		async dispatch(interaction) {
+		async dispatch(bot, interaction, services) {
 			const start = performance.now();
 			const actual = classifyContext({ guildId: interaction.guildId, dm: !interaction.guildId });
 
@@ -241,7 +256,9 @@ export function toSlashCommand<A extends ArgsShape>(spec: CommandSpec<A>): Compi
 				);
 			}
 
-			const invocation = withReplyHelpers(buildInvocationBase(interaction, extracted.args));
+			const invocation = withReplyHelpers(
+				buildInvocationBase(bot, interaction, extracted.args, services),
+			);
 
 			const actualForInvoked = classifyContext({
 				guildId: interaction.guildId,
@@ -254,7 +271,7 @@ export function toSlashCommand<A extends ArgsShape>(spec: CommandSpec<A>): Compi
 			try {
 				const path = computePath(spec, invoked);
 				await wrapExecution(
-					{ invocation, path, start, badge: slashBadge },
+					{ invocation, path, badge: slashBadge, start },
 					middleware,
 					() => invoked.exec(invocation),
 				);
@@ -282,6 +299,7 @@ function collectAutocomplete(
 }
 
 export async function dispatchAutocomplete(
+	bot: DiscordBot,
 	compiled: CompiledSlashCommand,
 	interaction: Interaction,
 ): Promise<void> {
@@ -314,7 +332,7 @@ export async function dispatchAutocomplete(
 		return [];
 	});
 
-	await discord.helpers.sendInteractionResponse(interaction.id, interaction.token, {
+	await bot.helpers.sendInteractionResponse(interaction.id, interaction.token, {
 		type: InteractionResponseTypes.ApplicationCommandAutocompleteResult,
 		data: { choices: choices.slice(0, 25) },
 	});
@@ -336,4 +354,22 @@ async function respond(
 ): Promise<void> {
 	await (interaction as unknown as { respond: (..._: any[]) => Promise<void> })
 		.respond({ content }, { isPrivate: ephemeral }).catch(() => {});
+}
+
+export async function dispatchSlashInteraction(
+	bot: DiscordBot,
+	interaction: Interaction,
+	services: Services,
+): Promise<void> {
+	const name = interaction.data?.name;
+	if (!name) return;
+
+	const entry = slashCommands.get(name);
+	if (!entry) return;
+
+	if (interaction.type === InteractionTypes.ApplicationCommandAutocomplete) {
+		await dispatchAutocomplete(bot, entry.compiled, interaction);
+	} else if (interaction.type === InteractionTypes.ApplicationCommand) {
+		await entry.compiled.dispatch(bot, interaction, services);
+	}
 }

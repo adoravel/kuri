@@ -5,7 +5,6 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
 import { allowedAliasManagers } from "./shared.tsx";
 
 export default defineCommand({
@@ -24,12 +23,12 @@ export default defineCommand({
 		const name = ctx.args.name.trim();
 		const enabled = ctx.args.value ?? true;
 
-		const result = await repositories.artistAliases.setSkipAutocorrect(name, enabled);
+		const result = await ctx.services.repos.artistAliases.setSkipAutocorrect(name, enabled);
 		if (!result.ok) {
 			return void await ctx.error(`failed to update: ${result.error.message}`);
 		}
 
-		const group = await repositories.artistAliases.getGroup(name);
+		const group = await ctx.services.repos.artistAliases.getGroup(name);
 		if (!group.ok) {
 			return void await ctx.success(`skip_autocorrect = ${enabled} for "${name}"`);
 		}

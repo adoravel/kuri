@@ -4,10 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { Message } from "@kuristina/discord-bot";
-import discord, { resolveChannel, resolveGuild } from "@kuristina/discord-bot";
-import type { CreateMessageOptions } from "@kuristina/discord-bot";
-import { repositories } from "@kuristina/database";
+import type { CreateMessageOptions, Message } from "@kuristina/discord-bot";
+import { type DiscordBot, resolveChannel, resolveGuild } from "@kuristina/discord-bot";
 
 import type { CommandSpec } from "./spec.ts";
 import { type InvocationBase, withReplyHelpers } from "./invocation.tsx";
@@ -17,13 +15,14 @@ import { buildTextArgsParser, prefix, StringStream } from "./text-args.ts";
 import { infer, word } from "@kuristina/commands";
 import type { ArgDef } from "./argument.ts";
 import type { Middleware } from "./middleware.ts";
-import { badge, bg, fg, type Mutable } from "@kuristina/core";
+import { bg, createBadge, fg, type Mutable } from "@kuristina/core";
 import { wrapExecution } from "./execution.ts";
 import { getGlobalMiddleware } from "./registry.ts";
+import type { Services } from "@kuristina/domain/services";
 
 const topLevel = new Map<string, CommandSpec<any>>();
 
-const textBadge = badge({ label: "command", bg: bg("#ec4899"), fg: fg("#000000") });
+const textBadge = createBadge({ label: "command", bg: bg("#ec4899"), fg: fg("#000000") });
 
 export function registerTextCommand(spec: CommandSpec<any>): void {
 	for (const alias of spec.aliases) {
@@ -66,15 +65,18 @@ function resolve(root: CommandSpec<any>, stream: StringStream): ResolvedCommand 
 }
 
 async function buildTextInvocationBase<A>(
+	platform: DiscordBot,
 	message: Message,
 	args: A,
 	mightBeEdit: boolean,
+	services: Services,
 ): Promise<InvocationBase<A>> {
+	const companions = services.repos.messageCompanions;
 	let responseId: bigint | undefined;
 	let reinvoking = false;
 
 	if (mightBeEdit) {
-		const prior = await repositories.messageCompanions.getForSource(message.id, "command");
+		const prior = await companions.getForSource(message.id, "command");
 		if (prior.ok && prior.value.length) {
 			responseId = prior.value[0].responseMessageId;
 			reinvoking = true;
@@ -95,8 +97,8 @@ async function buildTextInvocationBase<A>(
 		if (!responseId) {
 			ensureMessageReference(opts);
 
-			const response = await discord.helpers.sendMessage(message.channelId, opts);
-			await repositories.messageCompanions.add(
+			const response = await platform.helpers.sendMessage(message.channelId, opts);
+			await companions.add(
 				message.id,
 				responseId = response.id,
 				message.channelId,
@@ -106,8 +108,8 @@ async function buildTextInvocationBase<A>(
 		}
 
 		try {
-			const edit = await discord.helpers.editMessage(message.channelId, responseId, opts);
-			await repositories.messageCompanions.add(message.id, edit.id, message.channelId, "command");
+			const edit = await platform.helpers.editMessage(message.channelId, responseId, opts);
+			await companions.add(message.id, edit.id, message.channelId, "command");
 			return { id: edit.id, channelId: edit.channelId };
 		} catch (e) {
 			if ((e as any)?.code === 10008 /* unknown message */) {
@@ -125,35 +127,49 @@ async function buildTextInvocationBase<A>(
 		member: message.member,
 		guildId: message.guildId,
 		channelId: message.channelId,
-		platform: discord,
+		platform,
 		invokedAt: computeSnowflakeTimestamp(message.id),
-		getGuild: () => message.guildId ? resolveGuild(message.guildId) : Promise.resolve(undefined),
-		getChannel: () => resolveChannel(message.channelId),
+		getGuild: () =>
+			message.guildId ? resolveGuild(platform, message.guildId) : Promise.resolve(undefined),
+		getChannel: () => resolveChannel(platform, message.channelId),
 		raw: { kind: "text", message, isReinvocation: reinvoking },
 		defer: async () => {
-			await discord.helpers.triggerTypingIndicator(message.channelId).catch(() => {});
+			await platform.helpers.triggerTypingIndicator(message.channelId).catch(() => {});
 		},
 		reply: sendOrEdit,
+		services,
 	};
 }
 
-async function cleanupStaleReply(message: Message): Promise<void> {
-	const stale = await repositories.messageCompanions.getForSource(message.id, "command");
+async function cleanupStaleReply(
+	platform: DiscordBot,
+	message: Message,
+	services: Services,
+): Promise<void> {
+	const companions = services.repos.messageCompanions;
+
+	const stale = await companions.getForSource(message.id, "command");
 	if (!stale.ok || !stale.value.length) return;
-	for (const companion of stale.value) {
-		await discord.helpers.deleteMessage(companion.channelId, companion.responseMessageId).catch(
-			() => {},
-		);
-	}
-	await repositories.messageCompanions.deleteForSource(message.id, "command");
+
+	await Promise.all(
+		stale.value.map((c) =>
+			platform.helpers.deleteMessage(c.channelId, c.responseMessageId).catch(() => {})
+		),
+	);
+	await companions.deleteForSource(message.id, "command");
 }
 
-export async function executeTextCommand(message: Message, stream: StringStream): Promise<void> {
+export async function executeTextCommand(
+	platform: DiscordBot,
+	message: Message,
+	stream: StringStream,
+	services: Services,
+): Promise<void> {
 	const isEdit = message.editedTimestamp != null;
 
 	const prefixResult = prefix(stream);
 	if (!infer("success")(prefixResult)) {
-		if (isEdit) await cleanupStaleReply(message);
+		if (isEdit) await cleanupStaleReply(platform, message, services);
 		return;
 	}
 	const start = performance.now();
@@ -168,7 +184,7 @@ export async function executeTextCommand(message: Message, stream: StringStream)
 	const { args, parser: argsParser } = buildTextArgsParser(spec.args ?? {});
 	const parsed = argsParser(stream);
 
-	const base = await buildTextInvocationBase(message, {}, isEdit);
+	const base = await buildTextInvocationBase(platform, message, {}, isEdit, services);
 
 	if (!infer("success")(parsed)) {
 		const invocation = withReplyHelpers(base);

@@ -5,11 +5,7 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
-import {
-	getScrobbleProvider,
-	type TrackScrobbleProvider,
-} from "@kuristina/services/music/scrobbling";
+import type { TrackScrobbleProvider } from "@kuristina/domain/scrobbling";
 import { PROVIDER, resolveArtistAndTrack } from "./helper.ts";
 
 async function fetchTrackCard(
@@ -95,7 +91,7 @@ function makeLoveCommand(action: "love" | "unlove") {
 		},
 		async exec(ctx) {
 			const sessionKey = await ctx.resolve(
-				repositories.scrobble.getSessionKey(ctx.user.id, PROVIDER),
+				ctx.services.repos.scrobble.getSessionKey(ctx.user.id, PROVIDER),
 			);
 			if (sessionKey === undefined) return;
 			if (!sessionKey) {
@@ -111,14 +107,14 @@ function makeLoveCommand(action: "love" | "unlove") {
 				);
 			}
 
-			const provider = getScrobbleProvider(PROVIDER);
+			const provider = ctx.services.scrobbling;
 			const fn = action === "love" ? provider.track.love : provider.track.unrate;
 			if (!fn) return void await ctx.error(`${PROVIDER} doesn't support this`);
 
 			const result = await fn(sessionKey, artist, track);
 			if (!result.ok) return void await ctx.resolve(result);
 
-			const user = await ctx.resolve(repositories.scrobble.getDefault(ctx.user.id));
+			const user = await ctx.resolve(ctx.services.repos.scrobble.getDefault(ctx.user.id));
 			if (!user) return;
 
 			const card = await fetchTrackCard(provider.track, artist, track, user.username);

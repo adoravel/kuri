@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { badges } from "./badge.ts";
-
 export type LogLevel = "debug" | "info" | "warn" | "error" | "success";
 
 export const levelIcons: Record<LogLevel, string> = {
@@ -16,6 +14,6 @@ export const levelIcons: Record<LogLevel, string> = {
 	success: "✔",
 };
 
-export function levelBadge(level: LogLevel, icon: boolean = true): string {
-	return icon ? `${levelIcons[level]} ${badges[level]}` : badges[level];
+export function formatLevelBadge(level: LogLevel): string {
+	return `${levelIcons[level]} ${level.toUpperCase()}`;
 }

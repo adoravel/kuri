@@ -5,15 +5,13 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { mapAsync } from "@kuristina/core";
-import { repositories } from "@kuristina/database";
+import { map, ok } from "@kuristina/core";
 import { Theme } from "@kuristina/discord-ui";
-import { getScrobbleProvider } from "@kuristina/services/music/scrobbling";
-import { getRecentTracks } from "@kuristina/services/music/last.fm";
 import {
 	extractParagraphs,
 	fetchLinkedAccounts,
 	fetchPlaycounts,
+	getLatestArtist,
 	MAX_SHOWN,
 	PROVIDER,
 	type RankedResult,
@@ -106,13 +104,7 @@ export default defineCommand({
 		let query = ctx.args.query?.trim();
 
 		if (!query) {
-			const own = await repositories.scrobble.getDefault(ctx.user.id);
-			if (own.ok && own.value) {
-				const recent = await getRecentTracks(own.value.username, { limit: 1 });
-				if (recent.ok && recent.value.track[0]) {
-					query = recent.value.track[0].artist["#text"] ?? recent.value.track[0].name;
-				}
-			}
+			query = await getLatestArtist(ctx);
 		}
 		if (!query) {
 			return void await ctx.error(
@@ -120,11 +112,11 @@ export default defineCommand({
 			);
 		}
 
-		const provider = getScrobbleProvider(PROVIDER);
-		const skipAutocorrect = await repositories.artistAliases.shouldSkipAutocorrect(query);
+		const provider = ctx.services.scrobbling;
+		const skipAutocorrect = await ctx.services.repos.artistAliases.shouldSkipAutocorrect(query);
 		const exact = skipAutocorrect.ok ? skipAutocorrect.value : false;
 
-		const artistInfo = await mapAsync(provider.artist.getInfo(query, exact))((info) => {
+		const artistInfo = await map(provider.artist.getInfo(query, exact))((info) => {
 			return { ...info, name: info.name || query };
 		});
 
@@ -135,14 +127,14 @@ export default defineCommand({
 		const { value: artist } = artistInfo;
 
 		if (artist.name.toLowerCase() !== query.toLowerCase()) {
-			await repositories.artistAliases.link(query, artist.name, "autocorrect");
+			await ctx.services.repos.artistAliases.link(query, artist.name, "autocorrect");
 		}
-		const group = await repositories.artistAliases.getGroup(artist.name);
+		const group = await ctx.services.repos.artistAliases.getGroup(artist.name);
 		const names = group.ok ? group.value : [artist.name];
 
 		const linked = ctx.args.global || !ctx.guildId
-			? await repositories.scrobble.getAllForProvider(PROVIDER)
-			: await fetchLinkedAccounts(ctx.guildId);
+			? await ctx.services.repos.scrobble.getAllForProvider(PROVIDER)
+			: await fetchLinkedAccounts(ctx.services, ctx.guildId);
 
 		if (!linked.ok || !linked.value?.size) {
 			return void await ctx.error("No one has linked an account yet.");
@@ -151,12 +143,19 @@ export default defineCommand({
 		const entries = [...linked.value.entries()];
 		const settled = await fetchPlaycounts(entries, async (username) => {
 			const perAlias = await Promise.all(
-				names.map((n) => provider.artist.getInfo(n, true, username)),
+				names.map((name) => provider.artist.getInfo(name, true, username)),
 			);
-			const ok_ = perAlias.filter((r) => r.ok);
-			if (!ok_.length) return perAlias[0];
-			const summed = ok_.reduce((sum, r) => sum + r.value.individualUserScrobbles, 0);
-			return { ok: true, value: { ...ok_[0].value, individualUserScrobbles: summed } };
+
+			const found = perAlias.filter((r) => r.ok);
+			if (!found.length) return perAlias[0];
+
+			return ok({
+				...found[0].value,
+				individualUserScrobbles: found.reduce(
+					(sum, r) => sum + r.value.individualUserScrobbles,
+					0,
+				),
+			});
 		});
 
 		const { ranked, imageUrl } = rankResults(settled, MAX_SHOWN);

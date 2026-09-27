@@ -1,0 +1,13 @@
+{
+	"name": "@kuristina/domain",
+	"imports": {
+		"@std/fmt": "jsr:@std/fmt@^1.0.10",
+		"@discordeno/types": "npm:@discordeno/types@^22.0.1-next.5f7a06c"
+	},
+	"exports": {
+		"./services": "./services.ts",
+		"./markov": "./markov/mod.ts",
+		"./scrobbling": "./scrobbling/mod.ts",
+		"./richlinks": "./richlinks/mod.ts"
+	}
+}

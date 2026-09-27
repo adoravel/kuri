@@ -1,0 +1,4 @@
+{
+	"name": "@kuristina/app-kuri",
+	"exports": "./main.ts"
+}

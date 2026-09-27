@@ -6,30 +6,25 @@
 
 import { arg, defineCommand, runPaginator } from "@kuristina/commands/core";
 import type { Invocation } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
-import {
-	getHighestQualityImage,
-	getRecentTracks,
-	type LastFmTrack,
-} from "@kuristina/services/music/last.fm";
+import { getHighestQualityImage, type LastFmTrack } from "@kuristina/services/music/last.fm";
 import type { CreateMessageOptions } from "@kuristina/discord-bot";
 import { NoAccountMessage } from "./login.tsx";
 import { PROVIDER } from "./helper.ts";
 
 const PAGE_SIZE = 7;
 
-async function renderHistoryPage(username: string, page: number): Promise<CreateMessageOptions> {
-	const recent = await getRecentTracks(username, { limit: PAGE_SIZE, page: page + 1 });
-	if (!recent.ok || !recent.value.track.length) {
-		return <EmptyHistoryPage page={page} />;
-	}
-	return <HistoryPage tracks={recent.value.track} page={page} />;
-}
-
 function runHistoryBrowser(ctx: Invocation, username: string): Promise<void> {
 	return runPaginator(ctx, {
 		id: "fm-history",
-		renderPage: (page) => renderHistoryPage(username, page),
+		renderPage: async (page): Promise<CreateMessageOptions> => {
+			const recent = await ctx.services.lastfm.getRecentTracks(username, {
+				limit: PAGE_SIZE,
+				page: page + 1,
+			});
+
+			if (!recent.ok || !recent.value.track.length) return <EmptyHistoryPage page={page} />;
+			return <HistoryPage tracks={recent.value.track} page={page} />;
+		},
 	});
 }
 
@@ -94,7 +89,7 @@ export default defineCommand({
 	async exec(ctx) {
 		const userId = ctx.args.user ?? ctx.user.id;
 
-		const account = await ctx.resolve(repositories.scrobble.getDefault(userId));
+		const account = await ctx.resolve(ctx.services.repos.scrobble.getDefault(userId));
 		if (account === undefined) return;
 
 		if (!account) return void await ctx.reply({ ...<NoAccountMessage /> });

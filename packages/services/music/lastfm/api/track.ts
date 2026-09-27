@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { type AsyncResult, map, mapAsync, ok } from "@kuristina/core";
+import { type AsyncResult, map, ok } from "@kuristina/core";
 import type { LastFmError } from "../errors.ts";
 import { getHighestQualityImage, type LastFmArtistSummary } from "./artist.ts";
 import type { LastFmImage } from "../types.ts";
@@ -104,7 +104,7 @@ export function loveTrack(
 	track: string,
 ): AsyncResult<void, LastFmError> {
 	const love = request("track.love", { artist, track }, sessionKey, true);
-	return mapAsync(love)(() => undefined);
+	return map(love)(() => undefined);
 }
 
 export function unloveTrack(
@@ -113,7 +113,7 @@ export function unloveTrack(
 	track: string,
 ): AsyncResult<void, LastFmError> {
 	const unlove = request("track.unlove", { artist, track }, sessionKey, true);
-	return mapAsync(unlove)(() => undefined);
+	return map(unlove)(() => undefined);
 }
 
 export async function getTrackInfo(

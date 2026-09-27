@@ -5,8 +5,6 @@
  */
 
 import { defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
-import { invalidateAllForUser } from "@kuristina/services/music/last.fm";
 
 export const update = defineCommand({
 	aliases: ["update", "u"],
@@ -14,7 +12,7 @@ export const update = defineCommand({
 	category: "fm",
 	cooldownMs: 15_000,
 	async exec(ctx) {
-		const account = await ctx.resolve(repositories.scrobble.getDefault(ctx.user.id));
+		const account = await ctx.resolve(ctx.services.repos.scrobble.getDefault(ctx.user.id));
 		if (account === undefined) return;
 		if (!account) {
 			return void await ctx.error(
@@ -22,7 +20,7 @@ export const update = defineCommand({
 			);
 		}
 
-		await invalidateAllForUser(account.username);
+		await ctx.services.lastfm.cache.invalidateForUser(account.username);
 		await ctx.success(
 			`cleared cached Last.fm data for **${account.username}**. the next lookup will be fresh`,
 		);

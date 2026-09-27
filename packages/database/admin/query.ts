@@ -4,77 +4,88 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { database } from "@kuristina/database";
-import type { JsonValue, RowChange } from "./types.ts";
-import { MAX_KEY_VALUE_PAIRS, MAX_PAGE_SIZE } from "./constants.ts";
+import type { Executor } from "../connection.ts";
+import type { JsonPrimitive, JsonValue, RowChange } from "./types.ts";
+import { MAX_PAGE_SIZE } from "./constants.ts";
 import { assertEditableTable } from "./guard.ts";
-import { resolvePrimaryKeyColumns } from "./pk.ts";
+import { tableMetadata } from "./metadata.ts";
 
-export async function countRows(table: string): Promise<number> {
+type Row = Record<string, JsonValue>;
+
+function filtered(db: Executor, table: string, filter: Record<string, string>) {
+	let query = db.selectFrom(table as never).selectAll();
+	for (const [column, value] of Object.entries(filter)) {
+		query = query.where(column as never, "=", value as never);
+	}
+	return query;
+}
+
+export async function countRows(db: Executor, table: string): Promise<number> {
 	assertEditableTable(table);
-	const row = await database.selectFrom(table as never)
-		.select(({ fn }) => fn.countAll<number>().as("count"))
-		.executeTakeFirst();
+	const row = await db.selectFrom(table as never)
+		.select((eb) => eb.fn.countAll<number>().as("count"))
+		.executeTakeFirst() as { count?: number } | undefined;
 	return Number(row?.count ?? 0);
 }
 
 export async function fetchRows(
+	db: Executor,
 	table: string,
 	opts: { limit: number; offset: number },
-): Promise<Record<string, JsonValue>[]> {
+): Promise<Row[]> {
 	assertEditableTable(table);
-	const rows = await database.selectFrom(table as never)
+	const rows = await db.selectFrom(table as never)
 		.selectAll()
 		.limit(Math.min(opts.limit, MAX_PAGE_SIZE))
 		.offset(Math.max(opts.offset, 0))
 		.execute();
-	return rows as Record<string, JsonValue>[];
-}
-
-export async function fetchRow(
-	table: string,
-	filter: Record<string, string>,
-): Promise<Record<string, unknown>[]> {
-	assertEditableTable(table);
-	let q = database.selectFrom(table as never).selectAll();
-	for (const [col, val] of Object.entries(filter)) q = q.where(col as never, "=", val as never);
-	return await q.executeTakeFirst() as Record<string, unknown>[];
+	return rows as Row[];
 }
 
 export async function findMatchingRows(
+	db: Executor,
 	table: string,
 	filter: Record<string, string>,
-	limit: number = MAX_KEY_VALUE_PAIRS,
-): Promise<Record<string, unknown>[]> {
+	limit = MAX_PAGE_SIZE,
+): Promise<Row[]> {
 	assertEditableTable(table);
-	let q = database.selectFrom(table as never).selectAll();
-	for (const [col, val] of Object.entries(filter)) q = q.where(col as never, "=", val as never);
-	return await q.limit(Math.min(limit, MAX_PAGE_SIZE)).execute() as Record<string, unknown>[];
+	const rows = await filtered(db, table, filter)
+		.limit(Math.min(limit, MAX_PAGE_SIZE))
+		.execute();
+	return rows as Row[];
 }
 
-export async function buildDeleteChanges(
+async function withPrimaryKeys(
+	db: Executor,
 	table: string,
-	rows: Record<string, unknown>[],
+	rows: readonly Row[],
+	after: (row: Row) => Row | null,
 ): Promise<RowChange[]> {
-	const pkColumns = await resolvePrimaryKeyColumns(table);
+	const { primaryKeys } = await tableMetadata(db, table);
+
 	return rows.map((row) => ({
 		table,
-		pk: Object.fromEntries(pkColumns.map((col) => [col, row[col] as string | number])),
-		before: row as any,
-		after: null,
+		pk: Object.fromEntries(
+			primaryKeys.map((column) => [column, row[column] as JsonPrimitive]),
+		),
+		before: row,
+		after: after(row),
 	}));
 }
 
-export async function buildSetChanges(
+export function buildDeleteChanges(
+	db: Executor,
 	table: string,
-	rows: Record<string, unknown>[],
-	changes: Record<string, unknown>,
+	rows: readonly Row[],
 ): Promise<RowChange[]> {
-	const pkColumns = await resolvePrimaryKeyColumns(table);
-	return rows.map((row) => ({
-		table,
-		pk: Object.fromEntries(pkColumns.map((col) => [col, row[col] as string | number])),
-		before: row as any,
-		after: { ...row, ...changes } as any,
-	}));
+	return withPrimaryKeys(db, table, rows, () => null);
+}
+
+export function buildSetChanges(
+	db: Executor,
+	table: string,
+	rows: readonly Row[],
+	changes: Row,
+): Promise<RowChange[]> {
+	return withPrimaryKeys(db, table, rows, (row) => ({ ...row, ...changes }));
 }

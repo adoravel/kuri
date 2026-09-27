@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { type AsyncResult, ok, tap } from "@kuristina/core";
-import type { LastFmError } from "@kuristina/services/music/last.fm";
-import { repositories } from "@kuristina/database";
+import { type AsyncResult, type CacheStore, ok, tap } from "@kuristina/core";
+import type { LastFmError } from "./errors.ts";
 
 export type CacheKind = "metadata" | "user_stats" | "recent_tracks";
 
@@ -16,32 +15,33 @@ const TTL_SECONDS: Record<CacheKind, number> = {
 	recent_tracks: 60,
 };
 
-function cacheKey(method: string, params: Record<string, unknown>): string {
+const cacheKey = (method: string, params: Record<string, unknown>): string => {
 	const sorted = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
 	return `${method}:${sorted}`;
+};
+
+export interface LastFmCache {
+	through<T>(
+		kind: CacheKind,
+		method: string,
+		params: Record<string, unknown>,
+		fetcher: () => AsyncResult<T, LastFmError>,
+	): AsyncResult<T, LastFmError>;
+	invalidate(method: string, params: Record<string, unknown>): Promise<void>;
+	invalidateForUser(username: string): Promise<void>;
 }
 
-export async function withLastFmCache<T>(
-	kind: CacheKind,
-	method: string,
-	params: Record<string, unknown>,
-	fetcher: () => AsyncResult<T, LastFmError>,
-): AsyncResult<T, LastFmError> {
-	const key = cacheKey(method, params);
-	const cached = await repositories.lastfmCache.get<T>(key, TTL_SECONDS[kind]);
-	if (cached.ok && cached.value !== null) return ok(cached.value);
+export function createLastFmCache(store: CacheStore): LastFmCache {
+	return {
+		async through(kind, method, params, fetcher) {
+			const key = cacheKey(method, params);
 
-	const fresh = await fetcher();
-	return tap(fresh)(async ($) => await repositories.lastfmCache.set(key, $));
-}
+			const cached = await store.get<never>(key, TTL_SECONDS[kind]);
+			if (cached !== null) return ok(cached);
 
-export async function invalidateLastFmCache(
-	method: string,
-	params: Record<string, unknown>,
-): Promise<void> {
-	await repositories.lastfmCache.delete(cacheKey(method, params));
-}
-
-export async function invalidateAllForUser(username: string): Promise<void> {
-	await repositories.lastfmCache.deleteWhereKeyContains(username);
+			return tap(await fetcher())(($) => store.set(key, $));
+		},
+		invalidate: (method, params) => store.delete(cacheKey(method, params)),
+		invalidateForUser: (username) => store.deleteWhereKeyContains(username),
+	};
 }

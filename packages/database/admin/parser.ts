@@ -80,20 +80,3 @@ export function parseKeyValuePairs(input: string): ParseKeyValueResult {
 
 	return ok(result);
 }
-
-export function parseKeyValuePairsStrict(
-	input: string,
-	requiredKeys?: string[],
-): ParseKeyValueResult {
-	const result = parseKeyValuePairs(input);
-	if (!result.ok) return result;
-
-	if (requiredKeys) {
-		const missing = requiredKeys.filter((k) => !(k in result.value));
-		if (missing.length) {
-			return err(`Missing required keys: ${missing.join(", ")}`);
-		}
-	}
-
-	return ok(result.value);
-}

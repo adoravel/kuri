@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-export * from "./bot.ts";
+export * from "./factory.ts";
+export * from "./lifecycle.ts";
 export * from "./resolve.ts";
-export * from "./types.ts";
+export * from "./types/mod.ts";
 export * from "./events/mod.ts";
 export * from "./interactions/respond.ts";
-export { default } from "./bot.ts";

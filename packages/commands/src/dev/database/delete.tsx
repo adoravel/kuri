@@ -27,6 +27,7 @@ export default defineCommand({
 		}),
 	},
 	async exec(ctx) {
+		const db = ctx.services.db;
 		try {
 			assertEditableTable(ctx.args.table);
 			const filter = parseKeyValuePairs(ctx.args.where);
@@ -38,7 +39,7 @@ export default defineCommand({
 				return void await ctx.error("give me a filter like `discord_id=..,provider=..`");
 			}
 
-			const rows = await findMatchingRows(ctx.args.table, filter.value, MAX_PLAN_ROWS + 1);
+			const rows = await findMatchingRows(db, ctx.args.table, filter.value, MAX_PLAN_ROWS + 1);
 			if (!rows.length) {
 				return void await ctx.error(
 					`no rows in \`${ctx.args.table}\` match ${JSON.stringify(filter.value)}`,
@@ -50,7 +51,7 @@ export default defineCommand({
 				);
 			}
 
-			const changes = await buildDeleteChanges(ctx.args.table, rows);
+			const changes = await buildDeleteChanges(db, ctx.args.table, rows);
 			const plan = createPlan(
 				`delete ${ctx.args.table} where ${ctx.args.where} (${rows.length} row${
 					rows.length === 1 ? "" : "s"

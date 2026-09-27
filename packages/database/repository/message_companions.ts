@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { ok, type Result } from "@kuristina/core";
-import { type SqlError, tryQuery } from "@kuristina/database";
+import { type AsyncResult, ok } from "@kuristina/core";
+import type { SqlError } from "../errors.ts";
 import { Repository } from "./helper.ts";
 
 export type RichLinkProvider =
@@ -19,6 +19,8 @@ export type RichLinkProvider =
 
 export type CompanionKind = "command" | `richlink:${RichLinkProvider}`;
 
+export const RICHLINK_KIND_PREFIX = "richlink:";
+
 export interface MessageCompanion {
 	responseMessageId: bigint;
 	channelId: bigint;
@@ -26,7 +28,7 @@ export interface MessageCompanion {
 	sourceUrl: string | null;
 }
 
-export const isRichLinkKind = (kind: string): boolean => kind.startsWith("richlink:");
+const COMPANION_COLUMNS = ["response_message_id", "channel_id", "kind", "source_url"] as const;
 
 function toCompanion(
 	row: { response_message_id: string; channel_id: string; kind: string; source_url: string | null },
@@ -40,15 +42,15 @@ function toCompanion(
 }
 
 export class MessageCompanionRepository extends Repository {
-	async add(
+	add(
 		sourceId: bigint,
 		responseId: bigint,
 		channelId: bigint,
 		kind: CompanionKind,
 		sourceUrl?: string,
-	): Promise<Result<void, SqlError>> {
-		return await tryQuery(() =>
-			this.database.insertInto("message_companions")
+	): AsyncResult<void, SqlError> {
+		return this.mutate("add", (db) =>
+			db.insertInto("message_companions")
 				.values({
 					source_message_id: sourceId.toString(),
 					response_message_id: responseId.toString(),
@@ -58,67 +60,58 @@ export class MessageCompanionRepository extends Repository {
 					source_url: sourceUrl ?? null,
 				})
 				.onConflict((oc) => oc.column("response_message_id").doNothing())
-				.execute()
-		).then((r) => (r.ok ? ok(undefined) : r));
+				.execute());
 	}
 
-	async getForSource(
-		sourceId: bigint,
-		kind?: CompanionKind,
-	): Promise<Result<MessageCompanion[], SqlError>> {
-		return await tryQuery(async () => {
-			let query = this.database.selectFrom("message_companions")
-				.select(["response_message_id", "channel_id", "kind", "source_url"])
+	getForSource(sourceId: bigint, kind?: CompanionKind): AsyncResult<MessageCompanion[], SqlError> {
+		return this.attempt("getForSource", async (db) => {
+			let query = db.selectFrom("message_companions")
+				.select(COMPANION_COLUMNS)
 				.where("source_message_id", "=", sourceId.toString());
 			if (kind) query = query.where("kind", "=", kind);
 
-			const rows = await query.execute();
-			return rows.map(toCompanion);
+			return (await query.execute()).map(toCompanion);
 		});
 	}
 
-	async getForSourceByPrefix(
+	getForSourceByPrefix(
 		sourceId: bigint,
 		kindPrefix: string,
-	): Promise<Result<MessageCompanion[], SqlError>> {
-		return await tryQuery(async () => {
-			const rows = await this.database.selectFrom("message_companions")
-				.select(["response_message_id", "channel_id", "kind", "source_url"])
+	): AsyncResult<MessageCompanion[], SqlError> {
+		return this.attempt("getForSourceByPrefix", async (db) => {
+			const rows = await db.selectFrom("message_companions")
+				.select(COMPANION_COLUMNS)
 				.where("source_message_id", "=", sourceId.toString())
 				.where("kind", "like", `${kindPrefix}%`)
 				.execute();
+
 			return rows.map(toCompanion);
 		});
 	}
 
-	async deleteResponses(
-		sourceId: bigint,
-		responseIds: bigint[],
-	): Promise<Result<void, SqlError>> {
-		if (!responseIds.length) return ok(undefined);
-		return await tryQuery(() =>
-			this.database.deleteFrom("message_companions")
+	deleteResponses(sourceId: bigint, responseIds: bigint[]): AsyncResult<void, SqlError> {
+		if (!responseIds.length) return Promise.resolve(ok(undefined));
+
+		return this.mutate("deleteResponses", (db) =>
+			db.deleteFrom("message_companions")
 				.where("source_message_id", "=", sourceId.toString())
-				.where("response_message_id", "in", responseIds.map(($) => $.toString()))
-				.execute()
-		).then((r) => (r.ok ? ok(undefined) : r));
+				.where("response_message_id", "in", responseIds.map(String))
+				.execute());
 	}
 
-	async deleteForSource(sourceId: bigint, kind?: CompanionKind): Promise<Result<void, SqlError>> {
-		return await tryQuery(async () => {
-			let query = this.database.deleteFrom("message_companions")
+	deleteForSource(sourceId: bigint, kind?: CompanionKind): AsyncResult<void, SqlError> {
+		return this.mutate("deleteForSource", (db) => {
+			let query = db.deleteFrom("message_companions")
 				.where("source_message_id", "=", sourceId.toString());
 			if (kind) query = query.where("kind", "=", kind);
-			await query.execute();
-		}).then((r) => (r.ok ? ok(undefined) : r));
+			return query.execute();
+		});
 	}
 
-	async purgeOlderThan(retentionSeconds: number): Promise<Result<number, SqlError>> {
-		return await tryQuery(async () => {
-			const cutoff = Math.floor(Date.now() / 1000) - retentionSeconds;
-			const result = await this.database.deleteFrom("message_companions")
-				.where("created_at", "<", cutoff).executeTakeFirst();
-			return Number(result.numDeletedRows ?? 0n);
-		});
+	purgeOlderThan(retentionSeconds: number): AsyncResult<number, SqlError> {
+		return this.affected("purgeOlderThan", (db) =>
+			db.deleteFrom("message_companions")
+				.where("created_at", "<", Math.floor(Date.now() / 1000) - retentionSeconds)
+				.executeTakeFirst());
 	}
 }

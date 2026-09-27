@@ -5,9 +5,9 @@
  */
 
 import { encodeHex } from "@std/encoding/hex";
-import { repositories } from "@kuristina/database";
+import type { Repositories } from "@kuristina/database";
 import { config } from "@kuristina/config";
-import type discord from "../bot.ts";
+import type { DiscordBot } from "../factory.ts";
 import { getRegisteredSlashCommands } from "@kuristina/commands/core";
 
 const STATE_KEY = "slash_commands_hash";
@@ -22,13 +22,17 @@ function generateOAuth2Url(clientId: bigint): string {
 	return `https://discord.com/oauth2/authorize?client_id=${clientId}&scope=bot%20applications.commands&permissions=${permissions}`;
 }
 
-export async function reconcileSlashCommands(bot: typeof discord): Promise<void> {
+export async function reconcileSlashCommands(
+	bot: DiscordBot,
+	repositories: Repositories,
+): Promise<void> {
 	const payload = getRegisteredSlashCommands().map((c) => c.registration);
 	const currentHash = await hash(payload);
 
 	const stored = await repositories.state.get(STATE_KEY);
 	if (stored.ok && stored.value === currentHash) {
-		logger.info("slash: definitions unchanged");
+		logger.info("slash: definitions unchanged, skipping sync");
+		return;
 	}
 
 	try {

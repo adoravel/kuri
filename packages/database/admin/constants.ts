@@ -25,5 +25,4 @@ export const MAX_PAGE_SIZE = 50;
 export const MAX_KEY_VALUE_PAIRS = 50;
 export const MAX_PLAN_ROWS = 500;
 export const MAX_DIFF_LENGTH = 1800;
-export const DEFAULT_TIMEOUT_MS = 120_000;
 export const CONFIRM_TIMEOUT_MS = 60_000;

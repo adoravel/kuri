@@ -4,108 +4,114 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { safePromise, tap, withRetry } from "@kuristina/core";
-import discord from "@kuristina/discord-bot";
-import type { Channel, Guild, Member, Role, User } from "@kuristina/discord-bot";
+import { safe, withRetry } from "@kuristina/core";
 import { config } from "@kuristina/config";
-import { type BigString, BitwisePermissionFlags } from "./types.ts";
+import type { DiscordBot } from "./factory.ts";
+import {
+	type BigString,
+	BitwisePermissionFlags,
+	type Channel,
+	type Guild,
+	type Member,
+	type Role,
+	type User,
+} from "./types/mod.ts";
 
 export type HydratedMember = Member & { user: User };
 
-async function hydrate(member: Member): Promise<HydratedMember> {
+async function hydrate(bot: DiscordBot, member: Member): Promise<HydratedMember> {
 	if (!member.user) {
-		const user = await safePromise(discord.helpers.getUser(member.id));
-		tap(user)((user) => member.user = user);
+		const user = await safe(bot.helpers.getUser(member.id));
+		if (user.ok) member.user = user.value;
 	}
 	return member as HydratedMember;
 }
 
-export async function resolveUser(
-	id: bigint,
-): Promise<User | undefined> {
-	const cached = await discord.cache.users.get(id);
+export async function resolveUser(bot: DiscordBot, id: bigint): Promise<User | undefined> {
+	const cached = await bot.cache.users.get(id);
 	if (cached) return cached;
 
-	return withRetry(() => discord.helpers.getUser(id));
-}
-
-export async function resolveMember(
-	id: bigint,
-	guildId = config.discord.guildId,
-): Promise<HydratedMember | undefined> {
-	const cached = await discord.cache.members.get(id, guildId);
-	if (cached) return hydrate(cached);
-
-	const fetched = await safePromise(
-		withRetry(() => discord.helpers.getMember(guildId, id)),
-	);
-	if (!fetched.ok) return undefined;
-	return fetched ? hydrate(fetched.value) : undefined;
-}
-
-export async function resolveRole(
-	id: bigint,
-	guildId = config.discord.guildId,
-): Promise<Role | undefined> {
-	const cached = await discord.cache.roles.get(id, guildId);
-	if (cached) return cached;
-
-	const fetched = await safePromise(withRetry(() => discord.helpers.getRole(guildId, id)));
+	const fetched = await safe(withRetry(() => bot.helpers.getUser(id)));
 	return fetched.ok ? fetched.value : undefined;
 }
 
-export async function resolveChannel(id: bigint): Promise<Channel | undefined> {
-	const cached = await discord.cache.channels.get(id);
+export async function resolveMember(
+	bot: DiscordBot,
+	id: bigint,
+	guildId = config.discord.guildId,
+): Promise<HydratedMember | undefined> {
+	const cached = await bot.cache.members.get(id, guildId);
+	if (cached) return hydrate(bot, cached);
+
+	const fetched = await safe(withRetry(() => bot.helpers.getMember(guildId, id)));
+	return fetched.ok ? hydrate(bot, fetched.value) : undefined;
+}
+
+export async function resolveRole(
+	bot: DiscordBot,
+	id: bigint,
+	guildId = config.discord.guildId,
+): Promise<Role | undefined> {
+	const cached = await bot.cache.roles.get(id, guildId);
 	if (cached) return cached;
 
-	const fetched = await safePromise(withRetry(() => discord.helpers.getChannel(id)));
+	const fetched = await safe(withRetry(() => bot.helpers.getRole(guildId, id)));
+	return fetched.ok ? fetched.value : undefined;
+}
+
+export async function resolveChannel(
+	bot: DiscordBot,
+	id: bigint,
+): Promise<Channel | undefined> {
+	const cached = await bot.cache.channels.get(id);
+	if (cached) return cached;
+
+	const fetched = await safe(withRetry(() => bot.helpers.getChannel(id)));
 	return fetched.ok ? fetched.value : undefined;
 }
 
 export async function resolveGuild(
+	bot: DiscordBot,
 	id: bigint = config.discord.guildId,
-): Promise<Guild> {
-	const cached = await discord.cache.guilds.get(id);
+): Promise<Guild | undefined> {
+	const cached = await bot.cache.guilds.get(id);
 	if (cached) return cached as unknown as Guild;
 
-	const fetched = await safePromise(withRetry(() => discord.helpers.getGuild(id)));
-	if (!fetched.ok) throw fetched.error;
-	return fetched.value as unknown as Guild;
+	const fetched = await safe(withRetry(() => bot.helpers.getGuild(id)));
+	return fetched.ok ? fetched.value as unknown as Guild : undefined;
 }
 
 export async function resolveMembers(
-	ids: bigint[],
+	bot: DiscordBot,
+	ids: readonly bigint[],
 	guildId = config.discord.guildId,
 ): Promise<HydratedMember[]> {
 	if (!ids.length) return [];
 	if (ids.length === 1) {
-		const member = await resolveMember(ids[0], guildId);
+		const member = await resolveMember(bot, ids[0], guildId);
 		return member ? [member] : [];
 	}
 
 	const cached: HydratedMember[] = [], missing: bigint[] = [];
 
 	for (const id of ids) {
-		const member = await discord.cache.members.get(id, guildId);
-		if (member) {
-			cached.push(await hydrate(member));
-		} else {
-			missing.push(id);
-		}
+		const member = await bot.cache.members.get(id, guildId);
+		if (member) cached.push(await hydrate(bot, member));
+		else missing.push(id);
 	}
 
 	if (!missing.length) return cached;
 
-	const fetched = await safePromise(
+	const fetched = await safe(
 		withRetry(
 			async () => {
-				const members = await discord.gateway.requestMembers(guildId, {
+				const members = await bot.gateway.requestMembers(guildId, {
 					userIds: missing,
 					limit: missing.length,
 				});
 
 				if (!members.length) throw new Error(`no members found: ${missing.join(", ")}`);
-				return members as any as Member[];
+				return members as unknown as Member[];
 			},
 			{ retryIf: (e) => !(e instanceof Error && e.message.startsWith("no members found")) },
 		),
@@ -116,7 +122,7 @@ export async function resolveMembers(
 		return cached;
 	}
 
-	return [...cached, ...await Promise.all(fetched.value.map(hydrate))];
+	return [...cached, ...await Promise.all(fetched.value.map((m) => hydrate(bot, m)))];
 }
 
 function convertToBitfield(permission: any): bigint {
@@ -210,16 +216,17 @@ export function calculatePermissions(
 }
 
 export async function hasChannelPermission(
+	bot: DiscordBot,
 	guildId: bigint,
 	channelId: bigint,
 	permissionFlag: bigint,
 ): Promise<boolean> {
-	const guild = await resolveGuild(guildId);
-	const bot = await resolveMember(discord.id, guildId);
-	const channel = await resolveChannel(channelId);
+	const [guild, self, channel] = await Promise.all([
+		resolveGuild(bot, guildId),
+		resolveMember(bot, bot.id, guildId),
+		resolveChannel(bot, channelId),
+	]);
 
-	if (!guild || !bot || !channel) return false;
-
-	const currentPermissions = calculatePermissions(guild, bot, channel);
-	return (currentPermissions & permissionFlag) === permissionFlag;
+	if (!guild || !self || !channel) return false;
+	return (calculatePermissions(guild, self, channel) & permissionFlag) === permissionFlag;
 }

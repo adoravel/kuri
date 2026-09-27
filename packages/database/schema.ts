@@ -59,6 +59,3 @@ export interface KuristinaSchema {
 }
 
 export type SchemaContext = Kysely<KuristinaSchema>;
-
-export * from "@db/sqlite";
-export { sql } from "@kysely/kysely";

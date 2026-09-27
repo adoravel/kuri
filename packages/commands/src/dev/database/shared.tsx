@@ -111,7 +111,7 @@ export async function confirmAndApply(ctx: Invocation, plan: MutationPlan): Prom
 		return false;
 	}
 
-	const applied = await applyPlan(plan);
+	const applied = await applyPlan(ctx.services.db, plan);
 	if (!applied.ok) {
 		await ctx.reply({
 			content: `apply failed: ${applied.error.message}`,

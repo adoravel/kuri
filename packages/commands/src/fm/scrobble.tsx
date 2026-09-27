@@ -5,8 +5,6 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
-import { getScrobbleProvider } from "@kuristina/services/music/scrobbling";
 import { parseMusicQuery, PROVIDER } from "./helper.ts";
 
 function Scrobbled({ artist, track }: { artist: string; track: string }) {
@@ -46,7 +44,7 @@ export default defineCommand({
 		track: arg.string({ surfaces: ["slash"], required: false, description: "track name" }),
 	},
 	async exec(ctx) {
-		const key = await ctx.resolve(repositories.scrobble.getSessionKey(ctx.user.id, PROVIDER));
+		const key = await ctx.resolve(ctx.services.repos.scrobble.getSessionKey(ctx.user.id, PROVIDER));
 		if (key === undefined) return;
 		if (!key) {
 			return void await ctx.error(
@@ -62,7 +60,7 @@ export default defineCommand({
 			return void await ctx.error("give me `artist | track`");
 		}
 
-		const provider = getScrobbleProvider(PROVIDER);
+		const provider = ctx.services.scrobbling;
 		if (!provider.track.scrobble) {
 			return void await ctx.error(`${PROVIDER} doesn't support manual scrobbling`);
 		}

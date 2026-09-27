@@ -5,7 +5,6 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { repositories } from "@kuristina/database";
 import { allowedAliasManagers } from "./shared.tsx";
 
 export default defineCommand({
@@ -21,7 +20,7 @@ export default defineCommand({
 		}),
 	},
 	async exec(ctx) {
-		const result = await repositories.artistAliases.getAll();
+		const result = await ctx.services.repos.artistAliases.getAll();
 		if (!result.ok) {
 			return void await ctx.error(`failed to fetch aliases: ${result.error.message}`);
 		}

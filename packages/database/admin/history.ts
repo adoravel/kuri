@@ -19,7 +19,3 @@ export const peekLastPlan = (): MutationPlan | undefined => history[history.leng
 export const popLastPlan = (): MutationPlan | undefined => history.pop();
 
 export const getHistory = (): readonly MutationPlan[] => history;
-
-export const clearHistory = (): void => {
-	history.length = 0;
-};

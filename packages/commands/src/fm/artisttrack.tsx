@@ -5,7 +5,7 @@
  */
 
 import { arg, defineCommand } from "@kuristina/commands/core";
-import { type ArtistTopMedia, getScrobbleProvider } from "@kuristina/services/music/scrobbling";
+import type { ArtistTopMedia } from "@kuristina/domain/scrobbling";
 import { getLatestArtist, PROVIDER } from "./helper.ts";
 
 function NoChartMessage({ artist }: { artist: string }) {
@@ -65,7 +65,7 @@ export default defineCommand({
 		const query = ctx.args.artist || await getLatestArtist(ctx);
 		if (!query) return void ctx.error("Artist not found");
 
-		const provider = getScrobbleProvider(PROVIDER);
+		const provider = ctx.services.scrobbling;
 
 		const result = await provider.artist.getTopTracks(query, 10, false);
 		if (!result.ok) return void await ctx.resolve(result);

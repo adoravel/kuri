@@ -4,33 +4,40 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { messageCreate, messageDelete, messageUpdate } from "./message.ts";
-import interactionCreate from "./interactionCreate.ts";
+import type { DiscordBot } from "../factory.ts";
+import type { Events } from "../types/mod.ts";
+import type { Services } from "@kuristina/domain/services";
+import { createMessageHandlers } from "./message.ts";
+import { createInteractionCreateHandler } from "./interaction.ts";
+import { createMemberHandlers } from "./member.ts";
+import { createGuildHandlers } from "./guild.ts";
 
-import type { Events } from "@kuristina/discord-bot";
-import { guildMemberAdd, guildMemberRemove } from "./member.ts";
-import { guildCreate, guildDelete } from "./guild.ts";
-
-function guarded<K extends keyof Events>(
-	name: K,
-	handler: Events[K],
-) {
-	return async (...args: Parameters<NonNullable<typeof handler>>) => {
+const guarded = <T extends (...args: any[]) => any>(
+	name: string,
+	handler: T,
+): T => {
+	return (async (...args: Parameters<T>) => {
 		try {
-			return await (handler as any)?.(...args);
+			return await handler(...args);
 		} catch (e) {
-			logger.boo(`[${String(name)}] unhandled error: ` + e);
+			logger.boo(`[${name}] unhandled error:`, e);
 		}
-	};
+	}) as T;
+};
+
+function guardHandlers<T extends Record<string, (...args: any[]) => any>>(handlers: T): T {
+	return Object.fromEntries(
+		Object.entries(handlers).map(([name, fn]) => [name, guarded(name, fn)]),
+	) as T;
 }
 
-export const events = {
-	messageCreate: guarded("messageCreate", messageCreate),
-	messageUpdate: guarded("messageUpdate", messageUpdate),
-	messageDelete: guarded("messageDelete", messageDelete),
-	interactionCreate: guarded("interactionCreate", interactionCreate),
-	guildMemberAdd: guarded("guildMemberAdd", guildMemberAdd),
-	guildMemberRemove: guarded("guildMemberRemove", guildMemberRemove),
-	guildCreate: guarded("guildCreate", guildCreate),
-	guildDelete: guarded("guildDelete", guildDelete),
-};
+export function createAllEventHandlers(bot: DiscordBot, services: Services): Events {
+	const allHandlers = {
+		...createMessageHandlers(bot, services),
+		...createMemberHandlers(services),
+		...createGuildHandlers(bot, services),
+		interactionCreate: createInteractionCreateHandler(bot, services),
+	};
+
+	return guardHandlers(allHandlers);
+}

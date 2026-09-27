@@ -1,0 +1,4 @@
+{
+	"name": "@kuristina/app-client",
+	"exports": "./main.ts"
+}
