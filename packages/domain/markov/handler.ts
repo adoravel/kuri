@@ -100,6 +100,7 @@ export function createMarkovHandler(services: Services) {
 		const budget = isReplyToBot ? guide.maxCalls : (guide.interjectionCalls ?? guide.maxCalls);
 		const jev = createGuide(guide.apiKey, incoming, { ...guide, maxCalls: budget }, signal);
 		const seed = await jev.pickSeed(seeds.value);
+
 		return await generateFrom(seed, signal, jev.hooks);
 	};
 
