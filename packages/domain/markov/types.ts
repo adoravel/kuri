@@ -8,12 +8,23 @@ import type { KuristinaConfig } from "@kuristina/config";
 
 export type GuideConfig = KuristinaConfig["modules"]["markov"]["guide"];
 
+export type ContextConfig = KuristinaConfig["modules"]["markov"]["context"];
+
+export interface MarkovPlatform {
+	removeUserReaction(
+		channelId: bigint,
+		messageId: bigint,
+		userId: bigint,
+		emoji: string,
+	): Promise<unknown>;
+}
+
 export interface MarkovLink {
 	prefix: string;
 	suffix: string;
 	count: number;
 }
-
+ 
 export interface MarkovConfig {
 	pattern: RegExp;
 	enabled: boolean;
@@ -30,3 +41,4 @@ export interface MarkovConfig {
 	translationEmoji: string;
 	guide?: GuideConfig;
 }
+ 

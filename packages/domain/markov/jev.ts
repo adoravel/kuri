@@ -20,6 +20,18 @@ type Answers = Record<
 	{ noul?: number; choice?: string; probabilities?: Record<string, number> }
 >;
 
+export interface GuideContext {
+	/** the message being answered. */
+	incoming: string;
+	/** reply chain leading to `incoming`, oldest first */
+	thread: string[];
+	/** other recent channel messages, oldest first */
+	nearby: string[];
+}
+
+const CONVERSATION =
+	" The state is a chat: `thread` is the chain of replies leading to `incoming` (oldest first), `nearby` is other recent messages, and `draft` is the reply being written.";
+
 export interface Guide {
 	hooks: WalkHooks;
 
@@ -56,13 +68,15 @@ function sampleByWeight(weights: number[]): number {
 
 export function createGuide(
 	apiKey: string,
-	incoming: string,
+	ctx: GuideContext,
 	config: GuideConfig,
 	signal?: AbortSignal,
 ): Guide {
 	const timeout = AbortSignal.timeout(config.timeoutMs);
 	const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-	const context = incoming.slice(0, 500);
+	const baseState: Record<string, unknown> = { incoming: ctx.incoming.slice(0, 500) };
+	if (ctx.thread.length) baseState.thread = ctx.thread;
+	if (ctx.nearby.length) baseState.nearby = ctx.nearby;
 
 	let calls = 0;
 	const exhausted = () => !apiKey || calls >= config.maxCalls || sig.aborted;
@@ -85,7 +99,7 @@ export function createGuide(
 				},
 				body: JSON.stringify({
 					model: MODEL,
-					state: { incoming: context, draft },
+					state: { ...baseState, draft },
 					questions,
 				}),
 			});
@@ -132,7 +146,8 @@ export function createGuide(
 			next: {
 				type: "choice",
 				instructions:
-					"Which continuation would make this chat message funnier while staying perfectly understandable? Informal, sloppy or absurd wording is fine as long as the meaning is clear; ideally it riffs on the incoming message.",
+					"Which continuation would make this chat message funnier while staying perfectly understandable? Informal, sloppy or absurd wording is fine as long as the meaning is clear; ideally it riffs on the incoming message and fits the conversation." +
+					CONVERSATION,
 				criteria,
 			},
 		};
@@ -140,7 +155,8 @@ export function createGuide(
 			questions.complete = {
 				type: "noul",
 				instructions:
-					"Is the draft already a funny, perfectly understandable message where adding more words would only weaken it?",
+					"Is the draft already a funny, perfectly understandable message where adding more words would only weaken it?" +
+					CONVERSATION,
 			};
 		}
 
@@ -170,7 +186,8 @@ export function createGuide(
 			opening: {
 				type: "choice",
 				instructions:
-					"Which opening would start the funniest, still perfectly understandable reply to the incoming message?",
+					"Which opening would start the funniest, still perfectly understandable reply to the incoming message, given the conversation?" +
+					CONVERSATION,
 				criteria,
 			},
 		});

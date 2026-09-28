@@ -12,12 +12,13 @@ import { deepl } from "@kuristina/services/translation";
 import type { TranslateOptions } from "@kuristina/services/translation/deepl";
 
 import type { DiscordClient, Message, Reaction } from "@kuristina/discord-client";
-
+import { toChatMessage } from "../conversation/mod.ts";
 import { applyReplacements } from "./replacements.ts";
 import { createMarkovConsumer, log } from "./consumer.ts";
 import { keywords } from "./core.ts";
+import { createChatContext } from "./context.ts";
 import { createGuide } from "./jev.ts";
-import type { MarkovConfig } from "./types.ts";
+import type { MarkovConfig, MarkovPlatform } from "./types.ts";
 import type { Services } from "../services.ts";
 
 const TRANSLATION_DEBOUNCE_MS = 10_000;
@@ -67,7 +68,7 @@ const normalise = (input: string): string =>
 
 const matches = (input: string, pattern: RegExp): boolean => pattern.test(normalise(input));
 
-export function createMarkovHandler(services: Services) {
+export function createMarkovHandler(services: Services, platform: MarkovPlatform) {
 	const { config } = services;
 	const markov = config.modules.markov;
 
@@ -75,8 +76,12 @@ export function createMarkovHandler(services: Services) {
 		services,
 	);
 
+	const chat = markov.context?.enabled
+		? createChatContext(markov.context, services.conversation, config.discord.client.applicationId)
+		: undefined;
+
 	const generateReply = async (
-		incoming: string,
+		message: Message,
 		isReplyToBot: boolean,
 		signal?: AbortSignal,
 	): Promise<Result<string, SqlError>> => {
@@ -93,12 +98,26 @@ export function createMarkovHandler(services: Services) {
 		}
 
 		log("triggering guided generation...");
-		const seeds = await seedCandidates(keywords(incoming), 2);
+		const convo = chat ? await chat.build(toChatMessage(message), signal) : undefined;
+
+		const [head, ...tail] = convo?.keywordSources ?? [message.content];
+		const words = [...new Set([...keywords(head, 3), ...keywords(tail.join(" "), 2)])];
+
+		const seeds = await seedCandidates(words, 2);
 		if (!seeds.ok) return seeds;
 		if (!seeds.value.length) return await generate(undefined, signal);
 
 		const budget = isReplyToBot ? guide.maxCalls : (guide.interjectionCalls ?? guide.maxCalls);
-		const jev = createGuide(guide.apiKey, incoming, { ...guide, maxCalls: budget }, signal);
+		const jev = createGuide(
+			guide.apiKey,
+			{
+				incoming: convo?.incoming ?? message.content,
+				thread: convo?.thread ?? [],
+				nearby: convo?.nearby ?? [],
+			},
+			{ ...guide, maxCalls: budget },
+			signal,
+		);
 		const seed = await jev.pickSeed(seeds.value);
 
 		return await generateFrom(seed, signal, jev.hooks);
@@ -113,9 +132,9 @@ export function createMarkovHandler(services: Services) {
 		const isBotAuthor = message.author.id === botId ||
 			message.author.id === config.discord.applicationId;
 
-		if (isBotAuthor) return ok(undefined);
-
 		if (!isTrackedChannel(markov, message.channelId)) return ok(undefined);
+
+		if (isBotAuthor) return ok(undefined);
 
 		const state = getChannelState(markov, message.channelId);
 
@@ -123,7 +142,8 @@ export function createMarkovHandler(services: Services) {
 		if (!learnResult.ok) return learnResult;
 
 		const isMentioned = message.mentions?.some((m) => m.id === botId) ?? false;
-		const isReplyToBot = isMentioned || matches(message.content, markov.pattern);
+		const isReplyToBot = isMentioned || matches(message.content, markov.pattern) ||
+			chat?.isReplyToSelf(toChatMessage(message)) === true;
 
 		const now = Date.now();
 		const cooldown = getCooldown(markov, message.channelId);
@@ -149,7 +169,7 @@ export function createMarkovHandler(services: Services) {
 
 		safe(client.helpers.triggerTypingIndicator(message.channelId)).catch(() => {});
 
-		const base = await generateReply(message.content, isReplyToBot, signal);
+		const base = await generateReply(message, isReplyToBot, signal);
 		if (!base.ok) return base;
 
 		let { value } = base;
@@ -236,14 +256,14 @@ export function createMarkovHandler(services: Services) {
 
 		if (signal?.aborted) return ok(undefined);
 
-		// safe(
-		// 	client.helpers.deleteUserReaction(
-		// 		reaction.channelId,
-		// 		reaction.messageId,
-		// 		reaction.userId,
-		// 		reaction.emoji.name ?? reaction.emoji.id,
-		// 	),
-		// ).catch(() => {});
+		safe(
+			platform.removeUserReaction(
+				reaction.channelId,
+				reaction.messageId,
+				reaction.userId,
+				translateEmoji,
+			),
+		).catch(() => {});
 
 		const params: TranslateOptions = {
 			formality: "prefer_less",
