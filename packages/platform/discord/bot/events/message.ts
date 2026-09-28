@@ -7,6 +7,7 @@
 import { StringStream } from "@kuristina/commands";
 import { COMMAND_PREFIXES, executeTextCommand } from "@kuristina/commands/core";
 import { createRichLinkService } from "@kuristina/domain/richlinks";
+import { observeDiscordMessage } from "@kuristina/domain/conversation";
 import type { Services } from "@kuristina/domain/services";
 import type { DiscordBot } from "../factory.ts";
 import type { Message, MessageCreate, MessageDelete, MessageUpdate } from "../types/mod.ts";
@@ -26,6 +27,8 @@ export function createMessageHandlers(bot: DiscordBot, services: Services): {
 	const companions = services.repos.messageCompanions;
 
 	const dispatch = async (message: Message): Promise<void> => {
+		observeDiscordMessage(services.conversation, message);
+
 		if (message.author.bot || !message.guildId) return;
 
 		const command = isCommand(message.content);

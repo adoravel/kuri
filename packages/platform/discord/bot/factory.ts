@@ -16,6 +16,8 @@ import {
 import { getConfig } from "@kuristina/config";
 import type { Services } from "@kuristina/domain/services";
 
+import { createDiscordSource } from "@kuristina/domain/conversation";
+
 import { createAllEventHandlers } from "./events/mod.ts";
 
 const desiredProperties = createDesiredPropertiesObject({
@@ -25,48 +27,33 @@ const desiredProperties = createDesiredPropertiesObject({
 		username: true,
 		globalName: true,
 		avatar: true,
-		banner: true,
-		avatarDecorationData: true,
 		toggles: true,
 	},
 	guild: {
 		id: true,
 		ownerId: true,
-		banner: true,
 		icon: true,
 		channels: true,
 		name: true,
 		emojis: true,
-		stickers: true,
 		roles: true,
 		members: true,
 		permissions: true,
-		memberCount: true,
-		presences: true,
-		toggles: true,
 	},
 	roleColors: {
 		primaryColor: true,
-		secondaryColor: true,
-		tertiaryColor: true,
 	},
 	member: {
 		id: true,
 		avatar: true,
-		banner: true,
 		user: true,
-		nick: true,
 		roles: true,
 		guildId: true,
-		joinedAt: true,
 		permissions: true,
-		toggles: true,
-		avatarDecorationData: true,
 	},
 	message: {
 		id: true,
 		interaction: true,
-		interactionMetadata: true,
 		channelId: true,
 		guildId: true,
 		author: true,
@@ -74,14 +61,12 @@ const desiredProperties = createDesiredPropertiesObject({
 		content: true,
 		member: true,
 		mentions: true,
-		embeds: true,
 		nonce: true,
 		type: true,
-		stickerItems: true,
 		messageReference: true,
-		attachments: true,
 		editedTimestamp: true,
 		reactions: true,
+		referencedMessage: true,
 	},
 	messageReference: {
 		channelId: true,
@@ -92,17 +77,11 @@ const desiredProperties = createDesiredPropertiesObject({
 		id: true,
 		guildId: true,
 		name: true,
-		topic: true,
 		parentId: true,
 		permissions: true,
 		permissionOverwrites: true,
 		position: true,
-		memberCount: true,
 		type: true,
-	},
-	defaultReactionEmoji: {
-		emojiId: true,
-		emojiName: true,
 	},
 	emoji: {
 		id: true,
@@ -120,7 +99,6 @@ const desiredProperties = createDesiredPropertiesObject({
 		permissions: true,
 		unicodeEmoji: true,
 		flags: true,
-		toggles: true,
 		position: true,
 		tags: true,
 	},
@@ -166,7 +144,7 @@ function createBaseBot() {
 
 function createProxiedBot() {
 	return createProxyCache(createBaseBot(), {
-		desiredProps: { guild: ["members", "roles", "channels"] },
+		desiredProps: { guild: ["ownerId", "members", "roles", "channels"] },
 	});
 }
 
@@ -174,6 +152,11 @@ export type DiscordBot = ReturnType<typeof createProxiedBot>;
 
 export function createDiscordBot(services: Services): DiscordBot {
 	const bot = createProxiedBot();
+
+	services.conversation.addSource(createDiscordSource("bot", 0, {
+		message: (channelId, id) => bot.helpers.getMessage(channelId, id),
+		before: (channelId, before, limit) => bot.helpers.getMessages(channelId, { before, limit }),
+	}));
 
 	Object.assign(bot.events, createAllEventHandlers(bot, services));
 	bot.events.ready = ({ user }) => logger.info(`meowing as ${user.tag} :3`);
