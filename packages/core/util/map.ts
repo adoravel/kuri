@@ -18,19 +18,13 @@ export class TimedMap<K, V> {
 	private processInterval: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(
-		public readonly lifeDuration: number,
+		public readonly maxAgeMs: number,
 		private readonly intervalMs: number = 1000,
 		private readonly onExpire?: (key: K, value: V) => void,
 	) {}
 
 	public set(key: K, value: V): this {
-		const expiresAt = Date.now() + this.lifeDuration;
-
-		const existing = this.cache.get(key);
-		if (existing) {
-			existing.value = value, existing.expiresAt = expiresAt;
-			return this;
-		}
+		const expiresAt = Date.now() + this.maxAgeMs;
 
 		const entry = { key, value, expiresAt };
 		this.cache.set(key, entry);
@@ -102,6 +96,7 @@ export class TimedMap<K, V> {
 	private startInterval(): void {
 		if (this.processInterval) return;
 		this.processInterval = globalThis.setInterval(() => this.cleanupExpired(), this.intervalMs);
+		Deno.unrefTimer(this.processInterval);
 	}
 
 	private stopInterval(): void {
