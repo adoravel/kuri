@@ -95,7 +95,7 @@ function createLogger(defaultArgs: unknown[] = []): Logger {
 }
 
 export function prefixed(badge: string, message: string, metadata?: Record<string, unknown>) {
-	logger.info(`${badge} ${message}`, metadata);
+	logger.info(`${badge} ${message}`, metadata ?? "");
 }
 
 export const logger: Logger = createLogger();
