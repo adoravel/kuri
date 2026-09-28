@@ -6,7 +6,7 @@
 
 import { createBadge, ok, prefixed, type Result } from "@kuristina/core";
 import type { SqlError } from "@kuristina/database";
-import { TimedMap } from "@kuristina/core";
+import { LruTtlCache } from "@kuristina/core";
 import { bgYellow, black } from "@std/fmt/colors";
 
 import {
@@ -44,7 +44,7 @@ export interface MarkovConsumer {
 
 export function createMarkovConsumer(services: Services): MarkovConsumer {
 	const { markov } = services.repos;
-	const linkCache = new TimedMap<string, MarkovLink[]>(30_000);
+	const linkCache = new LruTtlCache<string, MarkovLink[]>({ maxEntries: 2_000, ttlMs: 30_000 });
 
 	const getLinks = async (prefix: string): Promise<MarkovLink[]> => {
 		const cached = linkCache.get(prefix);
