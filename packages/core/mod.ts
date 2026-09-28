@@ -8,6 +8,7 @@ export * from "./errors.ts";
 export * from "./lib/mod.ts";
 export * from "./logger/mod.ts";
 export * from "./util/map.ts";
+export * from "./util/lru.ts";
 export * from "./util/retry.ts";
 export * from "./util/types.ts";
 export * from "./util/http.ts";
