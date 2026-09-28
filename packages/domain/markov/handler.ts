@@ -15,6 +15,8 @@ import type { DiscordClient, Message, Reaction } from "@kuristina/discord-client
 
 import { applyReplacements } from "./replacements.ts";
 import { createMarkovConsumer, log } from "./consumer.ts";
+import { keywords } from "./core.ts";
+import { createGuide } from "./jev.ts";
 import type { MarkovConfig } from "./types.ts";
 import type { Services } from "../services.ts";
 
@@ -68,7 +70,38 @@ const matches = (input: string, pattern: RegExp): boolean => pattern.test(normal
 export function createMarkovHandler(services: Services) {
 	const { config } = services;
 	const markov = config.modules.markov;
-	const { learn, generate, sampleWord } = createMarkovConsumer(services);
+
+	const { learn, generate, sampleWord, seedCandidates, generateFrom } = createMarkovConsumer(
+		services,
+	);
+
+	const generateReply = async (
+		incoming: string,
+		isReplyToBot: boolean,
+		signal?: AbortSignal,
+	): Promise<Result<string, SqlError>> => {
+		const { singleWordChance, guide } = markov;
+
+		if (Math.random() * 100 < singleWordChance) {
+			log("generating single word...");
+			return await or(sampleWord())(() => generate(undefined, signal));
+		}
+
+		if (!guide?.enabled) {
+			log("triggering generation...");
+			return await generate(undefined, signal);
+		}
+
+		log("triggering guided generation...");
+		const seeds = await seedCandidates(keywords(incoming), 2);
+		if (!seeds.ok) return seeds;
+		if (!seeds.value.length) return await generate(undefined, signal);
+
+		const budget = isReplyToBot ? guide.maxCalls : (guide.interjectionCalls ?? guide.maxCalls);
+		const jev = createGuide(guide.apiKey, incoming, { ...guide, maxCalls: budget }, signal);
+		const seed = await jev.pickSeed(seeds.value);
+		return await generateFrom(seed, signal, jev.hooks);
+	};
 
 	const produce = async (
 		client: DiscordClient,
@@ -78,6 +111,7 @@ export function createMarkovHandler(services: Services) {
 		const botId = config.discord.client.applicationId;
 		const isBotAuthor = message.author.id === botId ||
 			message.author.id === config.discord.applicationId;
+
 		if (isBotAuthor) return ok(undefined);
 
 		if (!isTrackedChannel(markov, message.channelId)) return ok(undefined);
@@ -105,24 +139,19 @@ export function createMarkovHandler(services: Services) {
 			}
 		}
 
-		const { singleWordChance, urlConcatChance, urlOnlyChance } = markov;
-
-		let result: Result<string, SqlError>;
-		if (Math.random() * 100 < singleWordChance) {
-			log("generating single word...");
-			result = await or(sampleWord())(() => generate(undefined, signal));
-		} else {
-			log("triggering generation...");
-			result = await generate(undefined, signal);
-		}
-		if (!result.ok) return result;
-		log(`"${result.value}" -${state.triggerThreshold - state.messageCount}`);
-
 		if (!shouldTrigger) {
+			log(`-${state.triggerThreshold - state.messageCount}`);
 			return ok(undefined);
 		}
 
-		let { value } = result;
+		const { urlConcatChance, urlOnlyChance } = markov;
+
+		safe(client.helpers.triggerTypingIndicator(message.channelId)).catch(() => {});
+
+		const base = await generateReply(message.content, isReplyToBot, signal);
+		if (!base.ok) return base;
+
+		let { value } = base;
 		const roll = Math.random() * 1000;
 
 		if (roll < urlConcatChance) {
@@ -133,16 +162,11 @@ export function createMarkovHandler(services: Services) {
 			log("triggering url only...");
 			const urlResult = await generate("https://", signal);
 			if (urlResult.ok) value = urlResult.value;
-		} else {
-			const genResult = await generate(undefined, signal);
-			if (genResult.ok) value = genResult.value;
 		}
 
 		value = applyReplacements(value, markov, message.guildId);
 
 		if (signal?.aborted) return ok(undefined);
-		await safe(client.helpers.triggerTypingIndicator(message.channelId));
-
 		const sent = await safe(
 			client.helpers.sendMessage(message.channelId, {
 				content: value,
@@ -211,14 +235,14 @@ export function createMarkovHandler(services: Services) {
 
 		if (signal?.aborted) return ok(undefined);
 
-		safe(
-			client.helpers.deleteUserReaction(
-				reaction.channelId,
-				reaction.messageId,
-				reaction.userId,
-				reaction.emoji.name ?? reaction.emoji.id,
-			),
-		).catch(() => {});
+		// safe(
+		// 	client.helpers.deleteUserReaction(
+		// 		reaction.channelId,
+		// 		reaction.messageId,
+		// 		reaction.userId,
+		// 		reaction.emoji.name ?? reaction.emoji.id,
+		// 	),
+		// ).catch(() => {});
 
 		const params: TranslateOptions = {
 			formality: "prefer_less",

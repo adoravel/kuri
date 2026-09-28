@@ -9,7 +9,14 @@ import type { SqlError } from "@kuristina/database";
 import { TimedMap } from "@kuristina/core";
 import { bgYellow, black } from "@std/fmt/colors";
 
-import { buildChain, generateSentence, sanitise, shouldLearn, tokenize } from "./core.ts";
+import {
+	buildChain,
+	generateSentence,
+	sanitise,
+	shouldLearn,
+	tokenize,
+	type WalkHooks,
+} from "./core.ts";
 import type { MarkovLink } from "./types.ts";
 import type { Services } from "../services.ts";
 
@@ -19,14 +26,34 @@ export const log = (msg: string) => prefixed(badge, msg);
 
 export interface MarkovConsumer {
 	learn(text: string): Promise<Result<void, SqlError>>;
+
 	bulkLearn(messages: string[]): Promise<Result<void, SqlError>>;
+
 	sampleWord(): Promise<Result<string, SqlError>>;
+
 	generate(bias?: string, signal?: AbortSignal): Promise<Result<string, SqlError>>;
+
+	seedCandidates(words: string[], randomCount: number): Promise<Result<string[], SqlError>>;
+
+	generateFrom(
+		seedPrefix: string,
+		signal?: AbortSignal,
+		hooks?: WalkHooks,
+	): Promise<Result<string, SqlError>>;
 }
 
 export function createMarkovConsumer(services: Services): MarkovConsumer {
 	const { markov } = services.repos;
 	const linkCache = new TimedMap<string, MarkovLink[]>(30_000);
+
+	const getLinks = async (prefix: string): Promise<MarkovLink[]> => {
+		const cached = linkCache.get(prefix);
+		if (cached) return cached;
+		const res = await markov.findLinksByPrefix(prefix);
+		const value = res.ok ? res.value : [];
+		linkCache.set(prefix, value);
+		return value;
+	};
 
 	async function learn(text: string): Promise<Result<void, SqlError>> {
 		if (!shouldLearn(text)) return ok(undefined);
@@ -69,12 +96,51 @@ export function createMarkovConsumer(services: Services): MarkovConsumer {
 		return await markov.sampleWord();
 	}
 
+	async function randomSeed(): Promise<Result<string | null, SqlError>> {
+		const maxIdRes = await markov.maxChainId();
+		if (!maxIdRes.ok) return maxIdRes;
+		if (maxIdRes.value === null) return ok(null);
+
+		const randomId = Math.floor(Math.random() * maxIdRes.value) + 1;
+		const rows = await markov.findChainFromId(randomId);
+		if (!rows.ok) return rows;
+		return ok(rows.value.length ? rows.value[0].prefix : null);
+	}
+
+	async function seedCandidates(
+		words: string[],
+		randomCount: number,
+	): Promise<Result<string[], SqlError>> {
+		const seeds = new Set<string>();
+
+		const found = await Promise.all(words.map((w) => markov.findRandomSeedContaining(w)));
+		for (const res of found) {
+			if (res.ok) { for (const row of res.value.slice(0, 2)) seeds.add(row.prefix); }
+		}
+
+		for (let i = 0; i < randomCount; i++) {
+			const r = await randomSeed();
+			if (!r.ok) return r;
+			if (r.value) seeds.add(r.value);
+		}
+
+		return ok([...seeds]);
+	}
+
+	async function generateFrom(
+		seedPrefix: string,
+		signal?: AbortSignal,
+		hooks?: WalkHooks,
+	): Promise<Result<string, SqlError>> {
+		if (signal?.aborted) return ok("");
+		const maxLength = services.config.modules.markov.maxGenerationLength;
+		return ok(await generateSentence(seedPrefix, getLinks, maxLength, signal, hooks));
+	}
+
 	async function generate(
 		bias?: string,
 		signal?: AbortSignal,
 	): Promise<Result<string, SqlError>> {
-		const maxLength = services.config.modules.markov.maxGenerationLength;
-
 		let seedPrefix: string | undefined;
 
 		if (bias) {
@@ -86,32 +152,14 @@ export function createMarkovConsumer(services: Services): MarkovConsumer {
 		}
 
 		if (!seedPrefix) {
-			const maxIdRes = await markov.maxChainId();
-			if (!maxIdRes.ok) return maxIdRes;
-			if (maxIdRes.value === null) {
-				return ok("no data available");
-			}
-			const randomId = Math.floor(Math.random() * maxIdRes.value) + 1;
-			const rows = await markov.findChainFromId(randomId);
-			if (!rows.ok) return rows;
-			if (!rows.value.length) return ok("no data available");
-			seedPrefix = rows.value[0].prefix;
+			const seed = await randomSeed();
+			if (!seed.ok) return seed;
+			if (seed.value === null) return ok("no data available");
+			seedPrefix = seed.value;
 		}
 
-		if (signal?.aborted) return ok("");
-
-		const getLinks = async (prefix: string): Promise<MarkovLink[]> => {
-			const cached = linkCache.get(prefix);
-			if (cached) return cached;
-			const res = await markov.findLinksByPrefix(prefix);
-			const value = res.ok ? res.value : [];
-			linkCache.set(prefix, value);
-			return value;
-		};
-
-		const sentence = await generateSentence(seedPrefix, getLinks, maxLength, signal);
-		return ok(sentence);
+		return await generateFrom(seedPrefix, signal);
 	}
 
-	return { learn, bulkLearn, sampleWord, generate };
+	return { learn, bulkLearn, sampleWord, generate, seedCandidates, generateFrom };
 }

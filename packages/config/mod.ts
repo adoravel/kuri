@@ -59,6 +59,16 @@ export const configSchema = {
 			replacements: field.record(field.stringOr("")),
 			serverReplacements: field.record(field.record(field.stringOr(""))),
 			translationEmoji: field.stringOr("❔"),
+			guide: {
+				enabled: field.boolean(false),
+				apiKey: field.stringOr(""),
+				maxCalls: field.positiveInt(10),
+				interjectionCalls: field.positiveInt(6),
+				chunkSize: field.positiveInt(4),
+				optionsPerStep: field.positiveInt(6),
+				sharpness: field.positiveInt(2),
+				timeoutMs: field.positiveInt(5_000),
+			},
 		},
 		deepl: {
 			enabled: field.boolean(false),

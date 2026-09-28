@@ -4,6 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import type { KuristinaConfig } from "@kuristina/config";
+
+export type GuideConfig = KuristinaConfig["modules"]["markov"]["guide"];
+
 export interface MarkovLink {
 	prefix: string;
 	suffix: string;
@@ -24,4 +28,5 @@ export interface MarkovConfig {
 	replacements: Record<string, string>;
 	serverReplacements: Record<string, Record<string, string>>;
 	translationEmoji: string;
+	guide?: GuideConfig;
 }
