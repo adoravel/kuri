@@ -14,7 +14,8 @@ import type { ForgejoService } from "@kuristina/services/forges/forgejo";
 import type { MusicLinksService } from "@kuristina/services/music/links";
 import type { MetadataService } from "@kuristina/services/music/metadata";
 import type { KuristinaConfig } from "@kuristina/config";
-import type { ScrobbleProvider } from "./scrobbling/mod.ts";
+import type { ScrobbleProvider } from "@kuristina/domain/scrobbling";
+import type { ConversationStore } from "@kuristina/domain/conversation";
 
 export interface Services {
 	config: KuristinaConfig;
@@ -30,4 +31,5 @@ export interface Services {
 	forgejo: ForgejoService;
 	musicLinks: MusicLinksService;
 	metadata: MetadataService;
+	conversation: ConversationStore;
 }

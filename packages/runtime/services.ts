@@ -15,11 +15,21 @@ import { createGitHubService } from "@kuristina/services/forges/github";
 import { createForgejoService } from "@kuristina/services/forges/forgejo";
 import { createMusicLinksService } from "@kuristina/services/music/links";
 import { createMetadataService } from "@kuristina/services/music/metadata";
+import { createConversationStore } from "@kuristina/domain/conversation";
 
 export function createServices(config: KuristinaConfig, db: Database): Services {
 	const repos = createRepositories(db);
 	const cache = toCacheStore(repos.cache);
 	const lastfm = createLastFmService(toCacheStore(repos.lastfmCache));
+
+	const { channelIds, context } = config.modules.markov;
+	const trackedChannels = new Set(channelIds);
+	const conversation = createConversationStore({
+		tracked: (channelId) => trackedChannels.has(channelId),
+		maxMessages: context.maxMessages,
+		ttlMs: context.cacheTtlMs,
+		recentPerChannel: Math.max(context.nearbyMessages * 3, 24),
+	});
 
 	return {
 		config,
@@ -27,6 +37,7 @@ export function createServices(config: KuristinaConfig, db: Database): Services 
 		repos,
 		cache,
 		lastfm,
+		conversation,
 		scrobbling: createScrobbleProvider(lastfm),
 		twitter: createTwitterService(),
 		bluesky: createBlueskyService(),

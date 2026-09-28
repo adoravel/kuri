@@ -8,6 +8,7 @@
 		"./services": "./services.ts",
 		"./markov": "./markov/mod.ts",
 		"./scrobbling": "./scrobbling/mod.ts",
-		"./richlinks": "./richlinks/mod.ts"
+		"./richlinks": "./richlinks/mod.ts",
+		"./conversation": "./conversation/mod.ts"
 	}
 }
